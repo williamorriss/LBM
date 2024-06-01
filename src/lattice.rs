@@ -102,9 +102,16 @@ impl Lattice {
         self.uy.div(&self.rho);
     }
 
+
+
+    fn stream(&mut self) {
+
+    }
+
     fn collide(&mut self) {
         self.density();
         self.velocities();
+        todo!()
         
     }
 }
