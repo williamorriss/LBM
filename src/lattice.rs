@@ -49,7 +49,7 @@ pub struct Table {
 #[derive(Clone,Debug)]
 pub struct Settings {
     pub dimensions: D3,
-    pub relaxation: f32,
+    pub omega: f32,
 }
 
 
@@ -92,7 +92,20 @@ impl Lattice {
     }
 
     pub fn velocities(&mut self) {
-        self.ux.add(&self.lattice[Dir::NE]);
+        //ux//
+        [Dir::E,Dir::NE,Dir::SE].into_iter().for_each(|dir| self.ux.add(&self.lattice[dir]));
+        [Dir::W,Dir::NW,Dir::SW].into_iter().for_each(|dir| self.ux.sub(&self.lattice[dir]));
+        self.ux.div(&self.rho);
+        //uy//
+        [Dir::N,Dir::NE,Dir::NW].into_iter().for_each(|dir| self.uy.add(&self.lattice[dir]));
+        [Dir::S,Dir::SE,Dir::SW].into_iter().for_each(|dir| self.uy.sub(&self.lattice[dir]));
+        self.uy.div(&self.rho);
+    }
+
+    fn collide(&mut self) {
+        self.density();
+        self.velocities();
+        
     }
 }
 
@@ -123,7 +136,6 @@ impl IndexMut<(usize,usize)> for Table {
         &mut self.data[index.0 * self.dimensions.y + index.1]
     }
 }
-//#################//
 //Table Operations//
 impl Table {
     fn add(&mut self, rhs: &Self) {
