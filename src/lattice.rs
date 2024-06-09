@@ -27,9 +27,9 @@ impl Dir {
 //Dimension Structs//
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
-struct D2 {
-    x: usize,
-    y: usize,
+pub struct D2 {
+    pub x: usize,
+    pub y: usize,
 }
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
@@ -41,27 +41,30 @@ pub struct D3 {
 //#################//
 
 #[derive(Clone,Debug)]
-pub struct Table {
-    data: Box<[f32]>,
-    dimensions: D2,
+pub struct Table<T> {
+    pub data: Box<[T]>,
+    pub dimensions: D2,
 }
 
 #[derive(Clone,Debug)]
 pub struct Settings {
+    pub barriers: Table<(usize,usize)>,
     pub dimensions: D3,
     pub omega: f32,
+    pub time_steps: u128,
 }
 
 
 #[derive(Clone,Debug)]
 #[allow(dead_code)]
 pub struct Lattice {
-    lattice: [Table;Q],
+    lattice: [Table<f32>;Q],
+    rho: Table<f32>,
+    ux: Table<f32>,
+    uy: Table<f32>,
+    speed: Table<f32>,
     settings: Settings,
-    rho: Table,
-    ux: Table,
-    uy: Table,
-    speed: Table,
+    barriers: Table<(usize,usize)>,
 
 }
 
@@ -84,6 +87,7 @@ impl Lattice {
             uy: zeroes.clone(),
             speed: zeroes.clone(),
             settings: settings.clone(),
+            barriers: settings.barriers.clone(),
         }
     }
 
@@ -157,8 +161,8 @@ impl Lattice {
         {
         use itertools::izip;
         let omega = self.settings.omega;
-        for (table, weight, [x,y]) in izip!(self.lattice.iter_mut(),WEIGHTS.iter(),DIRECTIONS.iter()) {
-            if *x == 0. && *y == 0. {continue;}
+        for (table, weight, [x,y]) in izip!(self.lattice.iter_mut(),WEIGHTS,DIRECTIONS) {
+            if x == 0. && y == 0. {continue;} // Unit
             for (cell, ux, uy) in izip!(table.data.iter_mut(), self.ux.data.iter(), self.uy.data.iter()) {
                 let magnitude = (ux * ux) + (uy * uy);
                 let dot = x * ux + y * uy;
@@ -170,21 +174,42 @@ impl Lattice {
         //Unit Velocity//
         self.lattice[Dir::UNIT].add(&self.rho);
         for i in (0..Q).filter(|&i| i != 4) {
-            let lhs = &self.lattice[i] as *const Table;
+            let lhs = &self.lattice[i] as *const Table<f32>;
             unsafe {self.lattice[Dir::UNIT].sub(&*lhs);}
         }
     }
 
+    fn bounce(&mut self) {
+        let (x_max, y_max) =  (self.settings.dimensions.x, self.settings.dimensions.y);
+        for (index,[x,y]) in DIRECTIONS.into_iter().enumerate().rev() {
+            if x == 0. && y == 0. {continue;} // Unit
+            let (x,y) = (x as usize, y as usize);
+            let opposite_index = Q - index - 1;
+            let current_table = &mut self.lattice[opposite_index];
+            for (row,column) in self.barriers.data.into_iter() {
+                let (row,column) = (*row, *column);
+                let min = (column as i8 + x as i8) < 0 || (row as i8 + y as i8) < 0;
+                let max = (column + x) < x_max || (row + y) < y_max;
+                if min || max {continue;}
+                current_table[(row + y, column + x)] = current_table[(row, column)];
+                current_table[(row, column)] = 0.0;
+            }
+        }
+    }
+
     pub fn simulate(&mut self) {
-        self.stream();
-        self.collide();
+        for _ in 0..self.settings.time_steps {
+            self.stream();
+            self.bounce();
+            self.collide();
+        }
     }
 }
 
 //impl for indexing//
 use std::ops::{Index, IndexMut};
 impl Index<usize> for Lattice {
-    type Output = Table;
+    type Output = Table<f32>;
     fn index(&self, index: usize) -> &Self::Output {
         &self.lattice[index]
     }
@@ -196,43 +221,44 @@ impl IndexMut<usize> for Lattice {
     }
 }
 
-impl Index<(usize,usize)> for Table {
-    type Output = f32;
+impl<T> Index<(usize,usize)> for Table<T> {
+    type Output = T;
     fn index(&self, index: (usize,usize)) -> &Self::Output {
         &self.data[index.0 * self.dimensions.y + index.1]
     }
 }
 
-impl IndexMut<(usize,usize)> for Table {
+impl<T> IndexMut<(usize,usize)> for Table<T> {
     fn index_mut(&mut self, index: (usize,usize)) -> &mut Self::Output {
         &mut self.data[index.0 * self.dimensions.y + index.1]
     }
 }
 //Table Operations//
+use std::ops::{AddAssign,SubAssign,MulAssign,DivAssign};
 #[allow(dead_code)]
-impl Table {
+impl<T: Copy + AddAssign + SubAssign + MulAssign + DivAssign> Table<T> {
     fn add(&mut self, rhs: &Self) {
         self.data.iter_mut()
             .zip(rhs.data.iter())
-            .for_each(|(lhs,rhs)| *lhs += rhs);
+            .for_each(|(lhs,rhs)| *lhs += *rhs);
     }
 
     fn sub(&mut self, rhs: &Self) {
         self.data.iter_mut()
             .zip(rhs.data.iter())
-            .for_each(|(lhs,rhs)| *lhs -= rhs);
+            .for_each(|(lhs,rhs)| *lhs -= *rhs);
     }
 
     fn mul(&mut self, rhs: &Self) {
         self.data.iter_mut()
             .zip(rhs.data.iter())
-            .for_each(|(lhs,rhs)| *lhs *= rhs);
+            .for_each(|(lhs,rhs)| *lhs *= *rhs);
     }
 
     fn div(&mut self, rhs: &Self) {
         self.data.iter_mut()
             .zip(rhs.data.iter())
-            .for_each(|(lhs,rhs)| *lhs /= rhs);
+            .for_each(|(lhs,rhs)| *lhs /= *rhs);
     }
 }
 //##################//
