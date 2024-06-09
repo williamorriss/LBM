@@ -1,12 +1,13 @@
-mod lattice;
-use lattice::{Lattice, Settings,D3,Q};
-
-
-fn main() {  
-    let settings = image_load();
-    let mut lbm = Lattice::new(&settings);
-    lbm.simulate()
+pub mod window {
+    pub mod render;
+    pub mod texture;
 }
+
+mod lattice;
+mod graph;
+use lattice::{Settings,D3,Q};
+use window::render;
+
 
 fn image_load() -> Settings {
     use lattice::{Table,D2};
@@ -40,4 +41,15 @@ fn image_load() -> Settings {
     }
 
 
+}
+
+
+fn main() {  
+    pollster::block_on(render::run());
+    //let window = run();
+    //let settings = image_load();
+    // let mut lbm = Lattice::new(&settings);
+    // lbm.simulate()
+    //graph::new(&settings.dimensions);
+    //window::window(&settings.dimensions);
 }

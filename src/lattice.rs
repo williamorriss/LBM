@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 pub const Q: usize = 9; //dimensions of model
 const WEIGHTS: [f32;Q] = [
     1./36., 1./9., 1./36.,
@@ -26,13 +27,11 @@ impl Dir {
 
 //Dimension Structs//
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)]
 pub struct D2 {
     pub x: usize,
     pub y: usize,
 }
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)]
 pub struct D3 {
     pub x: usize,
     pub y: usize,
@@ -56,7 +55,6 @@ pub struct Settings {
 
 
 #[derive(Clone,Debug)]
-#[allow(dead_code)]
 pub struct Lattice {
     lattice: [Table<f32>;Q],
     rho: Table<f32>,
@@ -235,7 +233,6 @@ impl<T> IndexMut<(usize,usize)> for Table<T> {
 }
 //Table Operations//
 use std::ops::{AddAssign,SubAssign,MulAssign,DivAssign};
-#[allow(dead_code)]
 impl<T: Copy + AddAssign + SubAssign + MulAssign + DivAssign> Table<T> {
     fn add(&mut self, rhs: &Self) {
         self.data.iter_mut()
