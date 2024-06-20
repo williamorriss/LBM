@@ -5,12 +5,10 @@ pub mod window {
 
 mod lattice;
 mod graph;
-use lattice::{Settings,D3,Q};
-use window::render;
+use crate::lattice::{Settings, Table, D2, D3,Q};
 
 
 fn image_load() -> Settings {
-    use lattice::{Table,D2};
     let img = image::open("lbm.png").unwrap();
     let rbg_img = img.as_rgb8().unwrap();
     let (width, height) = rbg_img.dimensions();
@@ -45,11 +43,51 @@ fn image_load() -> Settings {
 
 
 fn main() {  
-    pollster::block_on(render::run());
-    //let window = run();
-    //let settings = image_load();
-    // let mut lbm = Lattice::new(&settings);
-    // lbm.simulate()
+    let settings = image_load();
+    //let mut lbm = lattice::Lattice::new(&settings);
+    //lbm.simulate();
     //graph::new(&settings.dimensions);
-    //window::window(&settings.dimensions);
+    println!("{:?}", settings.dimensions);
+    let generate = convert(settings.dimensions);
+    pollster::block_on(window::render::run(generate));
+}
+
+
+use window::render::Vertex;
+fn convert(dimensions: D3) -> impl Fn () -> (Vec<Vertex>, Vec<u16>) {
+
+    let capacity = dimensions.x * dimensions.y;
+    let (height,width) = (dimensions.y, dimensions.x);
+    let x_res = 2.0/width as f32;
+    let y_res = 2.0/height as f32;
+    let u16height = height as u16;
+
+    return move || -> (Vec<Vertex>, Vec<u16>) { //lattice input will go here
+        let mut cells: Vec<(f32,f32)> = Vec::with_capacity(capacity);
+        let mut indices = Vec::with_capacity(capacity * 6);
+        for y in 0..height {
+            for x in 0..width {
+                let x_pos = x as f32 * x_res - 1.0;
+                let y_pos = y as f32 * y_res - 1.0; 
+                cells.push((x_pos, y_pos));
+
+                let i = (y * height + x) as u16;
+                // top right triangle
+                indices.push(i); 
+                indices.push(i + u16height + 1); 
+                indices.push(i + 1); 
+                // bottom_right triangle
+                indices.push(i); 
+                indices.push(i + u16height); 
+                indices.push(i + u16height + 1);            
+            }
+        }
+        println!("{:?}", cells);
+        let vertices: Vec<Vertex> = cells.into_iter().map(|cell| Vertex {
+            position: [cell.0, cell.1, 0.0], 
+            tex_coords: [0.0,0.0],
+        }).collect();
+
+        (vertices, indices)
+    }
 }

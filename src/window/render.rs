@@ -8,16 +8,14 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
 
 use crate::window::texture;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-struct Vertex {
-    position: [f32; 3],
-    tex_coords: [f32; 2],
+pub struct Vertex {
+    pub position: [f32; 3],
+    pub tex_coords: [f32; 2],
 }
 
 impl Vertex {
@@ -63,6 +61,7 @@ const VERTICES: &[Vertex] = &[
 
 const INDICES: &[u16] = &[0, 1, 2, 0, 2, 3];
 
+#[allow(dead_code)]
 struct State<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
@@ -79,7 +78,11 @@ struct State<'a> {
 }
 
 impl<'a> State<'a> {
-    async fn new(window: &'a Window) -> State<'a> {
+    async fn new(window: &'a Window, generate: impl Fn () -> (Vec<Vertex>, Vec<u16>)) -> State<'a> {
+        let (vertices, indices) = generate();
+
+
+
         let size = window.inner_size();
 
         // The instance is a handle to our GPU
@@ -313,6 +316,7 @@ impl<'a> State<'a> {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
+            
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
@@ -325,34 +329,14 @@ impl<'a> State<'a> {
     }
 }
 
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
-pub async fn run() {
+pub async fn run(generate: impl Fn () -> (Vec<Vertex>, Vec<u16>)) {
     env_logger::init();
 
     let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
-    #[cfg(target_arch = "wasm32")]
-    {
-        // Winit prevents sizing with CSS, so we have to set
-        // the size manually when on web.
-        use winit::dpi::PhysicalSize;
-        let _ = window.request_inner_size(PhysicalSize::new(450, 400));
-
-        use winit::platform::web::WindowExtWebSys;
-        web_sys::window()
-            .and_then(|win| win.document())
-            .and_then(|doc| {
-                let dst = doc.get_element_by_id("wasm-example")?;
-                let canvas = web_sys::Element::from(window.canvas()?);
-                dst.append_child(&canvas).ok()?;
-                Some(())
-            })
-            .expect("Couldn't append canvas to document body.");
-    }
-
     // State::new uses async code, so we're going to wait for it to finish
-    let mut state = State::new(&window).await;
+    let mut state = State::new(&window, generate).await;
     let mut surface_configured = false;
 
     event_loop
