@@ -4,7 +4,6 @@ pub mod window {
 }
 
 mod lattice;
-mod graph;
 use crate::lattice::{Settings, Table, D2, D3,Q};
 
 
@@ -46,8 +45,6 @@ fn main() {
     let settings = image_load();
     //let mut lbm = lattice::Lattice::new(&settings);
     //lbm.simulate();
-    //graph::new(&settings.dimensions);
-    println!("{:?}", settings.dimensions);
     let generate = convert(settings.dimensions);
     pollster::block_on(window::render::run(generate));
 }
@@ -58,8 +55,8 @@ fn convert(dimensions: D3) -> impl Fn () -> (Vec<Vertex>, Vec<u16>) {
 
     let capacity = dimensions.x * dimensions.y;
     let (height,width) = (dimensions.y, dimensions.x);
-    let x_res = 2.0/width as f32;
-    let y_res = 2.0/height as f32;
+    let x_res = 2.0/(width - 1) as f32;
+    let y_res = 2.0/(height -1) as f32;
     let u16height = height as u16;
 
     return move || -> (Vec<Vertex>, Vec<u16>) { //lattice input will go here
@@ -68,26 +65,31 @@ fn convert(dimensions: D3) -> impl Fn () -> (Vec<Vertex>, Vec<u16>) {
         for y in 0..height {
             for x in 0..width {
                 let x_pos = x as f32 * x_res - 1.0;
-                let y_pos = y as f32 * y_res - 1.0; 
+                let y_pos = 1.0 - y as f32 * y_res; 
                 cells.push((x_pos, y_pos));
 
-                let i = (y * height + x) as u16;
-                // top right triangle
-                indices.push(i); 
-                indices.push(i + u16height + 1); 
-                indices.push(i + 1); 
-                // bottom_right triangle
-                indices.push(i); 
-                indices.push(i + u16height); 
-                indices.push(i + u16height + 1);            
+                let top_left = (y * height + x) as u16;
+                let top_right = top_left + 1;
+                let bottom_left = top_left + u16height;
+                let bottom_right = bottom_left + 1;
+                //left triangle
+                indices.push(bottom_left);
+                indices.push(bottom_right);
+                indices.push(top_right);
+                //right triangle
+                indices.push(top_right);
+                indices.push(top_left);
+                indices.push(bottom_left);
+
+                         
             }
         }
-        println!("{:?}", cells);
+        use rand::*;
+        let mut rng = rand::thread_rng();
         let vertices: Vec<Vertex> = cells.into_iter().map(|cell| Vertex {
             position: [cell.0, cell.1, 0.0], 
-            tex_coords: [0.0,0.0],
+            tex_coords: [rng.gen(),rng.gen()],
         }).collect();
-
         (vertices, indices)
     }
 }

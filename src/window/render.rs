@@ -19,47 +19,41 @@ pub struct Vertex {
 }
 
 impl Vertex {
+    const ATTRIBS: [wgpu::VertexAttribute; 2] =
+        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
+
     fn desc() -> wgpu::VertexBufferLayout<'static> {
         use std::mem;
+
         wgpu::VertexBufferLayout {
-            array_stride: mem::size_of::<Vertex>() as wgpu::BufferAddress,
+            array_stride: mem::size_of::<Self>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &[
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    shader_location: 0,
-                    format: wgpu::VertexFormat::Float32x3,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x2,
-                },
-            ],
+            attributes: &Self::ATTRIBS,
         }
     }
 }
 
-const VERTICES: &[Vertex] = &[
-    Vertex {
-        position: [-1.0, 1.0, 0.0,],
-        tex_coords: [0.0, 0.0],
-    }, // A
-    Vertex {
-        position: [-1.0, -1.0, 0.0],
-        tex_coords: [0.0, 1.0],
-    }, // B
-    Vertex {
-        position: [1.0, -1.0, 0.0],
-        tex_coords: [1.0, 1.0],
-    }, // C
-    Vertex {
-        position: [1.0, 1.0, 0.0],
-        tex_coords: [1.0, 0.0],
-    }, // D
-];
 
-const INDICES: &[u16] = &[0, 1, 2, 0, 2, 3];
+// const vertices: &[Vertex] = &[
+//     Vertex {
+//         position: [-1.0, 1.0, 0.0,],
+//         tex_coords: [0.0, 0.0],
+//     }, // A
+//     Vertex {
+//         position: [-1.0, -1.0, 0.0],
+//         tex_coords: [0.0, 1.0],
+//     }, // B
+//     Vertex {
+//         position: [1.0, -1.0, 0.0],
+//         tex_coords: [1.0, 1.0],
+//     }, // C
+//     Vertex {
+//         position: [1.0, 1.0, 0.0],
+//         tex_coords: [1.0, 0.0],
+//     }, // D
+// ];
+
+// const indices: &[u16] = &[0, 1, 2, 0, 2, 3];
 
 #[allow(dead_code)]
 struct State<'a> {
@@ -211,6 +205,7 @@ impl<'a> State<'a> {
             }),
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
+                //topology: wgpu::PrimitiveTopology::LineList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: Some(wgpu::Face::Back),
@@ -235,15 +230,15 @@ impl<'a> State<'a> {
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
+            contents: bytemuck::cast_slice(&vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(INDICES),
+            contents: bytemuck::cast_slice(&indices),
             usage: wgpu::BufferUsages::INDEX,
         });
-        let num_indices = INDICES.len() as u32;
+        let num_indices = indices.len() as u32;
 
         Self {
             surface,
