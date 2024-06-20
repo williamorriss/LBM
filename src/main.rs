@@ -66,8 +66,12 @@ fn convert(dimensions: D3) -> impl Fn () -> (Vec<Vertex>, Vec<u16>) {
             for x in 0..width {
                 let x_pos = x as f32 * x_res - 1.0;
                 let y_pos = 1.0 - y as f32 * y_res; 
-                cells.push((x_pos, y_pos));
+                cells.push((x_pos, y_pos));                         
+            }
+        }
 
+        for y in 0..height-1 {
+            for x in 0..width -1 {
                 let top_left = (y * height + x) as u16;
                 let top_right = top_left + 1;
                 let bottom_left = top_left + u16height;
@@ -80,8 +84,6 @@ fn convert(dimensions: D3) -> impl Fn () -> (Vec<Vertex>, Vec<u16>) {
                 indices.push(top_right);
                 indices.push(top_left);
                 indices.push(bottom_left);
-
-                         
             }
         }
         use rand::*;
@@ -90,6 +92,6 @@ fn convert(dimensions: D3) -> impl Fn () -> (Vec<Vertex>, Vec<u16>) {
             position: [cell.0, cell.1, 0.0], 
             tex_coords: [rng.gen(),rng.gen()],
         }).collect();
-        (vertices, indices)
+        (vertices, indices[..].to_vec())
     }
 }
