@@ -12,6 +12,37 @@ use winit::{
 use crate::window::texture;
 
 #[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Instance {
+    pub position: [f32;2],
+    pub colour: [f32;3],
+}
+
+impl Instance {
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        use std::mem;
+        wgpu::VertexBufferLayout {
+            array_stride: mem::size_of::<Instance>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 2,
+                    format: wgpu::VertexFormat::Float32x3,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Float32x3,
+                },
+            ],
+        }
+    }
+}
+
+
+
+#[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
     pub position: [f32; 3],
@@ -19,6 +50,7 @@ pub struct Vertex {
 }
 
 impl Vertex {
+    const INDICES: [u16;6] = [0,3,1,0,2,3];
     const ATTRIBS: [wgpu::VertexAttribute; 2] =
         wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
 
@@ -34,27 +66,6 @@ impl Vertex {
 }
 
 
-// const vertices: &[Vertex] = &[
-//     Vertex {
-//         position: [-1.0, 1.0, 0.0,],
-//         tex_coords: [0.0, 0.0],
-//     }, // A
-//     Vertex {
-//         position: [-1.0, -1.0, 0.0],
-//         tex_coords: [0.0, 1.0],
-//     }, // B
-//     Vertex {
-//         position: [1.0, -1.0, 0.0],
-//         tex_coords: [1.0, 1.0],
-//     }, // C
-//     Vertex {
-//         position: [1.0, 1.0, 0.0],
-//         tex_coords: [1.0, 0.0],
-//     }, // D
-// ];
-
-// const indices: &[u16] = &[0, 1, 2, 0, 2, 3];
-
 #[allow(dead_code)]
 struct State<'a> {
     surface: wgpu::Surface<'a>,
@@ -68,15 +79,15 @@ struct State<'a> {
     num_indices: u32,
     diffuse_texture: texture::Texture,
     diffuse_bind_group: wgpu::BindGroup,
+    instances: Vec<Instance>,
+    instance_buffer: wgpu::Buffer,
     window: &'a Window,
 }
 
 impl<'a> State<'a> {
-    async fn new(window: &'a Window, generate: impl Fn () -> (Vec<Vertex>, Vec<u16>)) -> State<'a> {
-        let (vertices, indices) = generate();
-
-
-
+    async fn new<T>(window: &'a Window, generate: T) -> State<'a> 
+    where T: Fn () -> (Vec<Instance>, [Vertex;4])
+    {
         let size = window.inner_size();
 
         // The instance is a handle to our GPU
@@ -128,6 +139,16 @@ impl<'a> State<'a> {
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };
+
+        let (instances, vertices) = generate();
+    
+        let instance_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Instance Buffer"),
+                contents: bytemuck::cast_slice(&instances),
+                usage: wgpu::BufferUsages::VERTEX,
+            }
+        );
 
         let diffuse_bytes = include_bytes!("casio.png");
         let diffuse_texture =
@@ -189,7 +210,7 @@ impl<'a> State<'a> {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[Vertex::desc()],
+                buffers: &[Vertex::desc(), Instance::desc()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -205,7 +226,6 @@ impl<'a> State<'a> {
             }),
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
-                //topology: wgpu::PrimitiveTopology::LineList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
                 cull_mode: Some(wgpu::Face::Back),
@@ -235,10 +255,9 @@ impl<'a> State<'a> {
         });
         let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(&indices),
+            contents: bytemuck::cast_slice(&Vertex::INDICES),
             usage: wgpu::BufferUsages::INDEX,
         });
-        let num_indices = indices.len() as u32;
 
         Self {
             surface,
@@ -249,9 +268,11 @@ impl<'a> State<'a> {
             render_pipeline,
             vertex_buffer,
             index_buffer,
-            num_indices,
+            num_indices: Vertex::INDICES.len() as u32,
             diffuse_texture,
             diffuse_bind_group,
+            instance_buffer,
+            instances,
             window,
         }
     }
@@ -311,10 +332,12 @@ impl<'a> State<'a> {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
-            
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+
+            render_pass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as _);
         }
 
         self.queue.submit(iter::once(encoder.finish()));
@@ -324,7 +347,7 @@ impl<'a> State<'a> {
     }
 }
 
-pub async fn run(generate: impl Fn () -> (Vec<Vertex>, Vec<u16>)) {
+pub async fn run(generate: impl Fn () -> (Vec<Instance>, [Vertex;4])) {
     env_logger::init();
 
     let event_loop = EventLoop::new().unwrap();

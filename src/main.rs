@@ -50,48 +50,50 @@ fn main() {
 }
 
 
-use window::render::Vertex;
-fn convert(dimensions: D3) -> impl Fn () -> (Vec<Vertex>, Vec<u16>) {
 
-    let capacity = dimensions.x * dimensions.y;
+use window::render::{Vertex,Instance};
+fn convert(dimensions: D3) -> impl Fn () -> (Vec<Instance>, [Vertex;4]) {
     let (height,width) = (dimensions.y, dimensions.x);
-    let x_res = 2.0/(width - 1) as f32;
-    let y_res = 2.0/(height -1) as f32;
-    let u16height = height as u16;
 
-    return move || -> (Vec<Vertex>, Vec<u16>) { //lattice input will go here
-        let mut cells: Vec<(f32,f32)> = Vec::with_capacity(capacity);
-        let mut indices = Vec::with_capacity(capacity * 6);
+    let capacity = height * width;
+    let x_res = 2.0/width as f32;
+    let y_res = 2.0/height as f32;
+
+    let vertices: [Vertex;4] = [
+        Vertex {
+            position: [-1.0,1.0, 0.0],
+            tex_coords: [0.0,0.0],
+        },
+        Vertex {
+            position: [-1.0 + x_res, 1.0, 0.0],
+            tex_coords: [1.0,0.0],
+        },
+        Vertex {
+            position: [-1.0, 1.0 - y_res,0.0],
+            tex_coords: [0.0,1.0],
+        },
+        Vertex {
+            position:[-1.0 + x_res, 1.0 - y_res,0.0],
+            tex_coords: [1.0,1.0],
+        }
+    ];
+    use rand::*;
+
+    return move || -> (Vec<Instance>,[Vertex;4]) { //lattice input will go here
+        let mut rng = rand::thread_rng();
+        let mut instances: Vec<Instance> = Vec::with_capacity(capacity);
         for y in 0..height {
             for x in 0..width {
-                let x_pos = x as f32 * x_res - 1.0;
-                let y_pos = 1.0 - y as f32 * y_res; 
-                cells.push((x_pos, y_pos));                         
+                let delta_x = x as f32 * x_res;
+                let delta_y = -(y as f32 * y_res); 
+                instances.push(
+                    Instance {
+                        position: [delta_x, delta_y],
+                        colour: [rng.gen(),rng.gen(), rng.gen()],
+                    }
+                );                         
             }
         }
-
-        for y in 0..height-1 {
-            for x in 0..width -1 {
-                let top_left = (y * height + x) as u16;
-                let top_right = top_left + 1;
-                let bottom_left = top_left + u16height;
-                let bottom_right = bottom_left + 1;
-                //left triangle
-                indices.push(bottom_left);
-                indices.push(bottom_right);
-                indices.push(top_right);
-                //right triangle
-                indices.push(top_right);
-                indices.push(top_left);
-                indices.push(bottom_left);
-            }
-        }
-        use rand::*;
-        let mut rng = rand::thread_rng();
-        let vertices: Vec<Vertex> = cells.into_iter().map(|cell| Vertex {
-            position: [cell.0, cell.1, 0.0], 
-            tex_coords: [rng.gen(),rng.gen()],
-        }).collect();
-        (vertices, indices[..].to_vec())
+        (instances,vertices)
     }
 }
