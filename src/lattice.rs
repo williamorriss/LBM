@@ -54,7 +54,7 @@ pub struct Settings {
 }
 
 
-#[derive(Clone,Debug)]
+#[derive(Debug)]
 pub struct Lattice {
     lattice: [Table<f32>;Q],
     rho: Table<f32>,
@@ -69,8 +69,10 @@ pub struct Lattice {
 impl Lattice {
     pub fn new(settings: &Settings) -> Self {
         let dimensions = D2 {x: settings.dimensions.x, y: settings.dimensions.y};
+        use rand::*;
+        let mut rng = rand::thread_rng();
         let ones = Table {
-            data: vec![1.0; dimensions.x * dimensions.y].into_boxed_slice(),
+            data: vec![rng.gen(); dimensions.x * dimensions.y].into_boxed_slice(),
             dimensions,
         };
         let zeroes = Table {
@@ -195,6 +197,40 @@ impl Lattice {
         }
     }
 
+    pub fn vorticity(&self) -> Vec<SimulationData> {
+        let (width, height) = (self.settings.dimensions.x, self.settings.dimensions.y);
+        let (ux, uy) = (&self.ux, &self.uy);
+        let (dx, dy) = (1.0,1.0);
+        let mut  out: Vec<SimulationData> = Vec::with_capacity(width * height);
+    
+        //vorticity_x
+        for i in 0..height {
+            out.push(SimulationData { vorticity: ux[(i,0)] - ux[(i,1)] / dx});
+            for j in 1..width - 1 {
+                out.push(SimulationData { vorticity: ux[(i,j+1)] - ux[(i,j-1)] / (2.0 * dx)});
+            }
+            out.push(SimulationData { vorticity: ux[(i,width - 1)] - ux[(i,width - 2)] / dx});
+        }
+        
+        //vorticity_y
+        let mut offset = width;
+        (0..width).into_iter().for_each(|j| {
+            out[j].vorticity -= uy[(0,j)] - ux[(1,j)];
+        });
+         
+        for i in 1..height - 1 {
+            for j in 0..width {
+                out[j + offset].vorticity -= uy[(i - 1,j)] - uy[(i + 1,j)] / (2.0 * dy);
+                offset += 1;
+            }
+        }
+    
+        (0..width).into_iter().for_each(|j| {
+            out[j + offset].vorticity -= uy[(height - 1,j)] - uy[(height - 2,j)];
+        });
+        out
+    }
+
     pub fn simulate(&mut self) {
         for _ in 0..self.settings.time_steps {
             self.stream();
@@ -233,6 +269,8 @@ impl<T> IndexMut<(usize,usize)> for Table<T> {
 }
 //Table Operations//
 use std::ops::{AddAssign,SubAssign,MulAssign,DivAssign};
+
+use crate::window::render::SimulationData;
 impl<T: Copy + AddAssign + SubAssign + MulAssign + DivAssign> Table<T> {
     fn add(&mut self, rhs: &Self) {
         self.data.iter_mut()

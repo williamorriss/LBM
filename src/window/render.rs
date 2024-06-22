@@ -9,20 +9,20 @@ use winit::{
 };
 
 
-use crate::window::texture;
+use crate::{lattice, window::texture};
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Instance {
+pub struct LatticeCell {
     pub position: [f32;2],
     pub colour: [f32;3],
 }
 
-impl Instance {
+impl LatticeCell {
     fn desc() -> wgpu::VertexBufferLayout<'static> {
         use std::mem;
         wgpu::VertexBufferLayout {
-            array_stride: mem::size_of::<Instance>() as wgpu::BufferAddress,
+            array_stride: mem::size_of::<LatticeCell>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Instance,
             attributes: &[
                 wgpu::VertexAttribute {
@@ -40,6 +40,28 @@ impl Instance {
     }
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, Debug)]
+pub struct SimulationData {
+    pub vorticity: f32,
+}
+
+impl SimulationData {
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        use std::mem;
+        wgpu::VertexBufferLayout {
+            array_stride: mem::size_of::<SimulationData>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    offset: 0,
+                    shader_location: 4,
+                    format: wgpu::VertexFormat::Float32,
+                },
+            ],
+        }
+    }
+}
 
 
 #[repr(C)]
@@ -79,19 +101,17 @@ struct State<'a> {
     num_indices: u32,
     diffuse_texture: texture::Texture,
     diffuse_bind_group: wgpu::BindGroup,
-    instances: Vec<Instance>,
-    instance_buffer: wgpu::Buffer,
+    cells: Vec<LatticeCell>,
+    cell_buffer: wgpu::Buffer,
+    simulation_buffer: wgpu::Buffer,
     window: &'a Window,
 }
 
 impl<'a> State<'a> {
-    async fn new<T>(window: &'a Window, generate: T) -> State<'a> 
-    where T: Fn () -> (Vec<Instance>, [Vertex;4])
+    async fn new<T>(window: &'a Window, generate: T, simulation: &lattice::Lattice) -> State<'a> 
+    where T: Fn () -> (Vec<LatticeCell>, [Vertex;4])
     {
         let size = window.inner_size();
-
-        // The instance is a handle to our GPU
-        // BackendBit::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
             ..Default::default()
@@ -107,6 +127,7 @@ impl<'a> State<'a> {
             })
             .await
             .unwrap();
+
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
@@ -120,15 +141,13 @@ impl<'a> State<'a> {
             .unwrap();
 
         let surface_caps = surface.get_capabilities(&adapter);
-        // Shader code in this tutorial assumes an Srgb surface texture. Using a different
-        // one will result all the colors comming out darker. If you want to support non
-        // Srgb surfaces, you'll need to account for that when drawing to the frame.
         let surface_format = surface_caps
             .formats
             .iter()
             .copied()
             .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
+
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -140,13 +159,22 @@ impl<'a> State<'a> {
             desired_maximum_frame_latency: 2,
         };
 
-        let (instances, vertices) = generate();
+        let (cells, vertices) = generate();
     
-        let instance_buffer = device.create_buffer_init(
+        let cell_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
-                label: Some("Instance Buffer"),
-                contents: bytemuck::cast_slice(&instances),
+                label: Some("LatticeCell Buffer"),
+                contents: bytemuck::cast_slice(&cells),
                 usage: wgpu::BufferUsages::VERTEX,
+            }
+        );
+
+        let initial_vortex = simulation.vorticity();
+        let simulation_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Simlation Buffer"),
+                contents: bytemuck::cast_slice(&initial_vortex),
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             }
         );
 
@@ -210,7 +238,7 @@ impl<'a> State<'a> {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: "vs_main",
-                buffers: &[Vertex::desc(), Instance::desc()],
+                buffers: &[Vertex::desc(), LatticeCell::desc(), SimulationData::desc()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -271,8 +299,9 @@ impl<'a> State<'a> {
             num_indices: Vertex::INDICES.len() as u32,
             diffuse_texture,
             diffuse_bind_group,
-            instance_buffer,
-            instances,
+            cell_buffer,
+            cells,
+            simulation_buffer,
             window,
         }
     }
@@ -295,7 +324,18 @@ impl<'a> State<'a> {
         false
     }
 
-    fn update(&mut self) {}
+    fn update(&mut self, simulation: &mut lattice::Lattice) {
+        simulation.simulate();
+        let encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Simulation Encoder"),
+            });
+        let vortex = simulation.vorticity();
+        println!("{:?}", vortex[30]);
+        self.queue.write_buffer(&self.simulation_buffer,0, bytemuck::cast_slice(&vortex));
+        self.queue.submit(std::iter::once(encoder.finish()));
+    }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
@@ -332,12 +372,14 @@ impl<'a> State<'a> {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
+
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.cell_buffer.slice(..));
+            render_pass.set_vertex_buffer(2, self.simulation_buffer.slice(..));
 
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as _);
+            render_pass.draw_indexed(0..self.num_indices, 0, 0..self.cells.len() as _);
         }
 
         self.queue.submit(iter::once(encoder.finish()));
@@ -347,14 +389,13 @@ impl<'a> State<'a> {
     }
 }
 
-pub async fn run(generate: impl Fn () -> (Vec<Instance>, [Vertex;4])) {
+pub async fn run(generate: impl Fn () -> (Vec<LatticeCell>, [Vertex;4]), simulation: &mut lattice::Lattice) {
     env_logger::init();
 
     let event_loop = EventLoop::new().unwrap();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
-    // State::new uses async code, so we're going to wait for it to finish
-    let mut state = State::new(&window, generate).await;
+    let mut state = State::new(&window, generate, simulation).await;
     let mut surface_configured = false;
 
     event_loop
@@ -388,7 +429,7 @@ pub async fn run(generate: impl Fn () -> (Vec<Instance>, [Vertex;4])) {
                                     return;
                                 }
 
-                                state.update();
+                                state.update(simulation);
                                 match state.render() {
                                     Ok(_) => {}
                                     // Reconfigure the surface if it's lost or outdated

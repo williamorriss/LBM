@@ -34,7 +34,7 @@ fn image_load() -> Settings {
         barriers, 
         dimensions: D3 {x, y, z: Q},
         omega: 0.5,
-        time_steps: 100,
+        time_steps: 1,
     }
 
 
@@ -43,16 +43,15 @@ fn image_load() -> Settings {
 
 fn main() {  
     let settings = image_load();
-    //let mut lbm = lattice::Lattice::new(&settings);
-    //lbm.simulate();
+    let mut lbm = lattice::Lattice::new(&settings);
     let generate = convert(settings.dimensions);
-    pollster::block_on(window::render::run(generate));
+    pollster::block_on(window::render::run(generate,&mut lbm));
 }
 
 
 
-use window::render::{Vertex,Instance};
-fn convert(dimensions: D3) -> impl Fn () -> (Vec<Instance>, [Vertex;4]) {
+use window::render::{Vertex,LatticeCell};
+fn convert(dimensions: D3) -> impl Fn () -> (Vec<LatticeCell>, [Vertex;4]) {
     let (height,width) = (dimensions.y, dimensions.x);
 
     let capacity = height * width;
@@ -79,15 +78,15 @@ fn convert(dimensions: D3) -> impl Fn () -> (Vec<Instance>, [Vertex;4]) {
     ];
     use rand::*;
 
-    return move || -> (Vec<Instance>,[Vertex;4]) { //lattice input will go here
+    return move || -> (Vec<LatticeCell>,[Vertex;4]) { //lattice input will go here
         let mut rng = rand::thread_rng();
-        let mut instances: Vec<Instance> = Vec::with_capacity(capacity);
+        let mut instances: Vec<LatticeCell> = Vec::with_capacity(capacity);
         for y in 0..height {
             for x in 0..width {
                 let delta_x = x as f32 * x_res;
                 let delta_y = -(y as f32 * y_res); 
                 instances.push(
-                    Instance {
+                    LatticeCell {
                         position: [delta_x, delta_y],
                         colour: [rng.gen(),rng.gen(), rng.gen()],
                     }
@@ -97,3 +96,9 @@ fn convert(dimensions: D3) -> impl Fn () -> (Vec<Instance>, [Vertex;4]) {
         (instances,vertices)
     }
 }
+
+
+
+
+
+
