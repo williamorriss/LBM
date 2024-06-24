@@ -33,8 +33,7 @@ fn image_load() -> Settings {
     Settings {
         barriers, 
         dimensions: D3 {x, y, z: Q},
-        omega: 0.5,
-        time_steps: 1,
+        omega: 0.7,
     }
 
 

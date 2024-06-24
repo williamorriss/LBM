@@ -43,7 +43,9 @@ impl LatticeCell {
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable, Debug)]
 pub struct SimulationData {
-    pub vorticity: f32,
+    pub ux: f32,
+    pub uy: f32,
+    // pub vorticity: f32,
 }
 
 impl SimulationData {
@@ -56,6 +58,11 @@ impl SimulationData {
                 wgpu::VertexAttribute {
                     offset: 0,
                     shader_location: 4,
+                    format: wgpu::VertexFormat::Float32,
+                },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<f32>() as wgpu::BufferAddress,
+                    shader_location: 5,
                     format: wgpu::VertexFormat::Float32,
                 },
             ],
@@ -332,7 +339,6 @@ impl<'a> State<'a> {
                 label: Some("Simulation Encoder"),
             });
         let vortex = simulation.vorticity();
-        println!("{:?}", vortex[30]);
         self.queue.write_buffer(&self.simulation_buffer,0, bytemuck::cast_slice(&vortex));
         self.queue.submit(std::iter::once(encoder.finish()));
     }
@@ -398,6 +404,8 @@ pub async fn run(generate: impl Fn () -> (Vec<LatticeCell>, [Vertex;4]), simulat
     let mut state = State::new(&window, generate, simulation).await;
     let mut surface_configured = false;
 
+    let mut now = std::time::Instant::now();
+    let simulation_step = 1000; //ms
     event_loop
         .run(move |event, control_flow| {
             match event {
@@ -428,8 +436,10 @@ pub async fn run(generate: impl Fn () -> (Vec<LatticeCell>, [Vertex;4]), simulat
                                 if !surface_configured {
                                     return;
                                 }
-
-                                state.update(simulation);
+                                if now.elapsed().as_millis() > simulation_step {
+                                    state.update(simulation);
+                                    now = std::time::Instant::now();
+                                }
                                 match state.render() {
                                     Ok(_) => {}
                                     // Reconfigure the surface if it's lost or outdated

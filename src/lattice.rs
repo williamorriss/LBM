@@ -50,7 +50,6 @@ pub struct Settings {
     pub barriers: Table<(usize,usize)>,
     pub dimensions: D3,
     pub omega: f32,
-    pub time_steps: u128,
 }
 
 
@@ -72,7 +71,7 @@ impl Lattice {
         use rand::*;
         let mut rng = rand::thread_rng();
         let ones = Table {
-            data: vec![rng.gen(); dimensions.x * dimensions.y].into_boxed_slice(),
+            data: vec![1.0; dimensions.x * dimensions.y].into_boxed_slice(),
             dimensions,
         };
         let zeroes = Table {
@@ -143,7 +142,15 @@ impl Lattice {
         }
     }
 
-    fn collide(&mut self) {
+
+    fn divide_rho(veloctiy: &mut Table<f32>, rho: &Table<f32>) {
+        veloctiy.data.iter_mut()
+        .zip(rho.data.iter())
+        .filter(|(_, &rho)| rho != 0.0)
+        .for_each(|(ux, rho)| *ux /= rho);
+    }
+
+    fn collide(&mut self) {        
         //density//
         self.lattice.iter().for_each(|table| self.rho.add(table));
 
@@ -151,11 +158,11 @@ impl Lattice {
             //ux//
         [Dir::E,Dir::NE,Dir::SE].into_iter().for_each(|dir| self.ux.add(&self.lattice[dir]));
         [Dir::W,Dir::NW,Dir::SW].into_iter().for_each(|dir| self.ux.sub(&self.lattice[dir]));
-        self.ux.div(&self.rho);
-            //uy//
+        Lattice::divide_rho(&mut self.ux, &self.rho);
+        //uy//
         [Dir::N,Dir::NE,Dir::NW].into_iter().for_each(|dir| self.uy.add(&self.lattice[dir]));
         [Dir::S,Dir::SE,Dir::SW].into_iter().for_each(|dir| self.uy.sub(&self.lattice[dir]));
-        self.uy.div(&self.rho);
+        Lattice::divide_rho(&mut self.uy, &self.rho);
 
         //collision//
         {
@@ -163,10 +170,11 @@ impl Lattice {
         let omega = self.settings.omega;
         for (table, weight, [x,y]) in izip!(self.lattice.iter_mut(),WEIGHTS,DIRECTIONS) {
             if x == 0. && y == 0. {continue;} // Unit
-            for (cell, ux, uy) in izip!(table.data.iter_mut(), self.ux.data.iter(), self.uy.data.iter()) {
-                let magnitude = (ux * ux) + (uy * uy);
+            for (cell,rho, ux, uy) in izip!(table.data.iter_mut(), self.rho.data.iter(), self.ux.data.iter(), self.uy.data.iter()) {
+                let magnitude = (ux * ux) + (uy * uy); //precompute these values somehwere else?
                 let dot = x * ux + y * uy;
-                *cell = omega * weight * (1. + 3. * dot + 4.5 * (dot * dot) - 1.5 * magnitude);
+                let n_eq = rho * weight * (1. + 3. * dot + 4.5 * (dot * dot) - 1.5 * magnitude);
+                *cell = *cell + omega * (*cell - n_eq);
             }
         }
         }
@@ -199,47 +207,50 @@ impl Lattice {
 
     pub fn vorticity(&self) -> Vec<SimulationData> {
         let (width, height) = (self.settings.dimensions.x, self.settings.dimensions.y);
-        let (ux, uy) = (&self.ux, &self.uy);
-        let (dx, dy) = (1.0,1.0);
+        // let (ux, uy) = (&self.ux, &self.uy);
+        // let (dx, dy) = (1.0,1.0);
         let mut  out: Vec<SimulationData> = Vec::with_capacity(width * height);
-    
-        //vorticity_x
-        for i in 0..height {
-            out.push(SimulationData { vorticity: ux[(i,0)] - ux[(i,1)] / dx});
-            for j in 1..width - 1 {
-                out.push(SimulationData { vorticity: ux[(i,j+1)] - ux[(i,j-1)] / (2.0 * dx)});
-            }
-            out.push(SimulationData { vorticity: ux[(i,width - 1)] - ux[(i,width - 2)] / dx});
+        for (ux, uy) in self.ux.data.iter().zip(self.uy.data.iter()) {
+            out.push(SimulationData {ux: *ux, uy: *uy});
         }
-        
-        //vorticity_y
-        let mut offset = width;
-        (0..width).into_iter().for_each(|j| {
-            out[j].vorticity -= uy[(0,j)] - ux[(1,j)];
-        });
-         
-        for i in 1..height - 1 {
-            for j in 0..width {
-                out[j + offset].vorticity -= uy[(i - 1,j)] - uy[(i + 1,j)] / (2.0 * dy);
-                offset += 1;
-            }
-        }
-    
-        (0..width).into_iter().for_each(|j| {
-            out[j + offset].vorticity -= uy[(height - 1,j)] - uy[(height - 2,j)];
-        });
         out
+    
+        // //vorticity_x
+        // for i in 0..height {
+        //     out.push(SimulationData { vorticity: ux[(i,0)] - ux[(i,1)] / dx});
+        //     for j in 1..width - 1 {
+        //         out.push(SimulationData { vorticity: ux[(i,j+1)] - ux[(i,j-1)] / (2.0 * dx)});
+        //     }
+        //     out.push(SimulationData { vorticity: ux[(i,width - 1)] - ux[(i,width - 2)] / dx});
+        // }
+        
+        // //vorticity_y
+        // let mut offset = width;
+        // (0..width).into_iter().for_each(|j| {
+        //     out[j].vorticity -= uy[(0,j)] - ux[(1,j)];
+        // });
+         
+        // for i in 1..height - 1 {
+        //     for j in 0..width {
+        //         out[j + offset].vorticity -= uy[(i - 1,j)] - uy[(i + 1,j)] / (2.0 * dy);
+        //         offset += 1;
+        //     }
+        // }
+    
+        // (0..width).into_iter().for_each(|j| {
+        //     out[j + offset].vorticity -= uy[(height - 1,j)] - uy[(height - 2,j)];
+        // });
+        // out
     }
 
     pub fn simulate(&mut self) {
-        for _ in 0..self.settings.time_steps {
-            self.stream();
-            self.bounce();
-            self.collide();
-        }
+        self.stream();
+        self.bounce();
+        self.collide();
     }
 }
 
+use std::cell;
 //impl for indexing//
 use std::ops::{Index, IndexMut};
 impl Index<usize> for Lattice {
