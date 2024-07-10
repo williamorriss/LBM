@@ -194,7 +194,7 @@ impl Lattice {
         }
     }
 
-
+    /// Normalises values for `Lattice::collide` 
     fn divide_rho(veloctiy: &mut Table<f32>, rho: &Table<f32>) {
         veloctiy.data.iter_mut()
         .zip(rho.data.iter())
@@ -202,7 +202,8 @@ impl Lattice {
         .for_each(|(ux, rho)| *ux /= rho);
     }
 
-    fn collide(&mut self) {        
+    /// Collision Function
+    fn collide(&mut self) {    
         //density//
         self.lattice.iter().for_each(|table| self.rho.add(table));
 
@@ -270,33 +271,6 @@ impl Lattice {
             out.push(SimulationData {ux: *ux, uy: *uy});
         }
         out
-    
-        // //vorticity_x
-        // for i in 0..height {
-        //     out.push(SimulationData { vorticity: ux[(i,0)] - ux[(i,1)] / dx});
-        //     for j in 1..width - 1 {
-        //         out.push(SimulationData { vorticity: ux[(i,j+1)] - ux[(i,j-1)] / (2.0 * dx)});
-        //     }
-        //     out.push(SimulationData { vorticity: ux[(i,width - 1)] - ux[(i,width - 2)] / dx});
-        // }
-        
-        // //vorticity_y
-        // let mut offset = width;
-        // (0..width).into_iter().for_each(|j| {
-        //     out[j].vorticity -= uy[(0,j)] - ux[(1,j)];
-        // });
-         
-        // for i in 1..height - 1 {
-        //     for j in 0..width {
-        //         out[j + offset].vorticity -= uy[(i - 1,j)] - uy[(i + 1,j)] / (2.0 * dy);
-        //         offset += 1;
-        //     }
-        // }
-    
-        // (0..width).into_iter().for_each(|j| {
-        //     out[j + offset].vorticity -= uy[(height - 1,j)] - uy[(height - 2,j)];
-        // });
-        // out
     }
 
     pub fn simulate(&mut self) {
@@ -308,7 +282,7 @@ impl Lattice {
     }
 }
 
-
+use std::io::Write;
 //impl for indexing//
 use std::ops::{Index, IndexMut};
 impl Index<usize> for Lattice {
@@ -367,15 +341,132 @@ impl<T: Copy + AddAssign + SubAssign + MulAssign + DivAssign> Table<T> {
 }
 
 
-//DEBUG//
-
-impl Table<f32> {
-    pub fn print(&self) {
-        for row in 0..self.dimensions.y {
-            let start = row * self.dimensions.x;
-            let end = start + self.dimensions.x;
-            println!("{:?}",&self.data[start..end]);
+//Tests//
+#[cfg(test)]
+mod tests {
+    mod rotation {
+        use crate::lattice::{D2, Lattice};
+        fn display_grid(grid: &[f32], shape: &D2) -> String {
+            grid.chunks(shape.x).map(|line| format!("\n{:?}", line)).collect()
         }
+
+        
+        #[test]
+        fn test_rotate_up() {
+            let mut initial_grid = [
+                00.0, 01.0, 02.0, 03.0, 04.0, 05.0,
+                10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+                20.0, 21.0, 22.0, 23.0, 24.0, 25.0,
+            ];
+
+            let shape = D2 {
+                x: 6,
+                y: 3,
+            };
+
+            let expected = [
+                10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+                20.0, 21.0, 22.0, 23.0, 24.0, 25.0,
+                00.0, 01.0, 02.0, 03.0, 04.0, 05.0,
+            ];
+
+            Lattice::rotate_up(&mut initial_grid , &shape);
+            assert_eq!(initial_grid, expected, "UP: {}", display_grid(&initial_grid, &shape))
+        }
+
+        #[test]
+        fn test_rotate_down() {
+            let mut initial_grid = [
+                00.0, 01.0, 02.0, 03.0, 04.0, 05.0,
+                10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+                20.0, 21.0, 22.0, 23.0, 24.0, 25.0,
+            ];
+
+            let shape = D2 {
+                x: 6,
+                y: 3,
+            };
+
+            let expected = [
+                20.0, 21.0, 22.0, 23.0, 24.0, 25.0,
+                00.0, 01.0, 02.0, 03.0, 04.0, 05.0,
+                10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+            ];
+
+            Lattice::rotate_down(&mut initial_grid , &shape);
+            assert_eq!(initial_grid, expected, "DOWN: {}", display_grid(&initial_grid, &shape))
+        }
+
+        #[test]
+        fn test_rotate_right() {
+            let mut initial_grid = [
+                00.0, 01.0, 02.0, 03.0, 04.0, 05.0,
+                10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+                20.0, 21.0, 22.0, 23.0, 24.0, 25.0,
+            ];
+
+            let shape = D2 {
+                x: 6,
+                y: 3,
+            };
+
+            let expected = [
+                05.0, 00.0, 01.0, 02.0, 03.0, 04.0,
+                15.0, 10.0, 11.0, 12.0, 13.0, 14.0,
+                25.0, 20.0, 21.0, 22.0, 23.0, 24.0,
+            ];
+
+            Lattice::rotate_right(&mut initial_grid , &shape);
+            assert_eq!(initial_grid, expected, "RIGHT: {}", display_grid(&initial_grid, &shape))
+        }
+
+        #[test]
+        fn test_rotate_left() {
+            let mut initial_grid = [
+                00.0, 01.0, 02.0, 03.0, 04.0, 05.0,
+                10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+                20.0, 21.0, 22.0, 23.0, 24.0, 25.0,
+            ];
+
+            let shape = D2 {
+                x: 6,
+                y: 3,
+            };
+
+            let expected = [
+                01.0, 02.0, 03.0, 04.0, 05.0, 00.0, 
+                11.0, 12.0, 13.0, 14.0, 15.0, 10.0, 
+                21.0, 22.0, 23.0, 24.0, 25.0, 20.0, 
+            ];
+
+            Lattice::rotate_left(&mut initial_grid , &shape);
+            assert_eq!(initial_grid, expected, "LEFT: {}", display_grid(&initial_grid, &shape))
+        }
+
+        #[test]
+        fn null() {
+            let mut initial_grid = [
+                00.0, 01.0, 02.0, 03.0, 04.0, 05.0,
+                10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+                20.0, 21.0, 22.0, 23.0, 24.0, 25.0,
+            ];
+
+            let expected = initial_grid.clone();
+
+            let shape = D2 {
+                x: 6,
+                y: 3,
+            };
+
+            Lattice::rotate_up(&mut initial_grid , &shape);
+            Lattice::rotate_right(&mut initial_grid , &shape);
+            Lattice::rotate_down(&mut initial_grid , &shape);
+            Lattice::rotate_left(&mut initial_grid , &shape);
+
+            assert_eq!(initial_grid, expected, "LEFT: {}", display_grid(&initial_grid, &shape))
+        }
+
+        
     }
 }
 //##################//
