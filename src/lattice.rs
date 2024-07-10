@@ -39,7 +39,7 @@ pub struct D3 {
 }
 //#################//
 
-#[derive(Clone,Debug)]
+#[derive(Clone, Debug)] //custom DEBUG
 pub struct Table<T> {
     pub data: Box<[T]>,
     pub dimensions: D2,
@@ -62,14 +62,65 @@ pub struct Lattice {
     speed: Table<f32>,
     settings: Settings,
     barriers: Table<(usize,usize)>,
+    debug: Log,
 
+}
+
+#[derive(Debug)]
+struct Log {
+    timestep: usize,
+    ux_file: std::fs::File,
+    uy_file: std::fs::File,
+}
+
+impl Log {
+    const UX_OUT: &'static str = "./debug/ux.txt";
+    const UY_OUT: &'static str = "./debug/uy.txt";
+
+    fn new() -> Log {
+        std::fs::remove_file(Log::UX_OUT).unwrap();
+        std::fs::remove_file(Log::UY_OUT).unwrap();
+
+        let ux_file = std::fs::File::create(Log::UX_OUT).unwrap();
+        let uy_file = std::fs::File::create(Log::UY_OUT).unwrap();
+
+        Log {
+            timestep: 0,
+            ux_file,
+            uy_file,
+        }
+    }
+
+    fn format_table(table: &Table<f32>) -> String {
+        let mut out = String::with_capacity(table.data.len());
+        for row in 0..table.dimensions.y {
+            let start = row * table.dimensions.x;
+            let end = start + table.dimensions.x;
+            out.push_str(&format!("{:?}\n", &table.data[start..end]));
+        }
+        out
+    }
+
+    fn log(&mut self, ux: &Table<f32>, uy: &Table<f32>) {
+        let number = format!("{:?}\n", self.timestep);
+        let number = number.as_bytes();
+        let divider = "#################\n".as_bytes();
+        let ux_table = Log::format_table(ux);
+        let uy_table = Log::format_table(uy);
+
+        self.ux_file.write(number).unwrap();
+        self.ux_file.write(ux_table.as_bytes()).unwrap();
+        self.ux_file.write(divider).unwrap();
+
+        self.uy_file.write(number).unwrap();
+        self.uy_file.write(uy_table.as_bytes()).unwrap();
+        self.uy_file.write(divider).unwrap();
+    }
 }
 
 impl Lattice {
     pub fn new(settings: &Settings) -> Self {
         let dimensions = D2 {x: settings.dimensions.x, y: settings.dimensions.y};
-        use rand::*;
-        let mut rng = rand::thread_rng();
         let ones = Table {
             data: vec![1.0; dimensions.x * dimensions.y].into_boxed_slice(),
             dimensions,
@@ -87,6 +138,7 @@ impl Lattice {
             speed: zeroes.clone(),
             settings: settings.clone(),
             barriers: settings.barriers.clone(),
+            debug: Log::new(),
         }
     }
 
@@ -166,15 +218,21 @@ impl Lattice {
 
         //collision//
         {
-        use itertools::izip;
-        let omega = self.settings.omega;
-        for (table, weight, [x,y]) in izip!(self.lattice.iter_mut(),WEIGHTS,DIRECTIONS) {
+        let cells = self.settings.dimensions.x * self.settings.dimensions.y;
+        for (table, weight, [x,y]) in itertools::izip!(self.lattice.iter_mut(),WEIGHTS,DIRECTIONS) {
             if x == 0. && y == 0. {continue;} // Unit
-            for (cell,rho, ux, uy) in izip!(table.data.iter_mut(), self.rho.data.iter(), self.ux.data.iter(), self.uy.data.iter()) {
+            let mut barrier_iter = self.barriers.data.iter().map(|indices| indices.1 * self.settings.dimensions.y + indices.0 );
+            let mut barrier_index = barrier_iter.next().unwrap_or(usize::MAX);
+            for i in 0..cells {
+                if i == barrier_index {
+                    barrier_index = barrier_iter.next().unwrap_or(usize::MAX);
+                    continue;
+                }
+                let (ux, uy) = (self.ux.data[i],self.uy.data[i]);
                 let magnitude = (ux * ux) + (uy * uy); //precompute these values somehwere else?
                 let dot = x * ux + y * uy;
-                let n_eq = rho * weight * (1. + 3. * dot + 4.5 * (dot * dot) - 1.5 * magnitude);
-                *cell = *cell + omega * (*cell - n_eq);
+                let n_eq = self.rho.data[i] * weight * (1. + 3. * dot + 4.5 * (dot * dot) - 1.5 * magnitude);
+                table.data[i] = table.data[i] + self.settings.omega * (table.data[i] - n_eq);
             }
         }
         }
@@ -188,19 +246,17 @@ impl Lattice {
     }
 
     fn bounce(&mut self) {
-        let (x_max, y_max) =  (self.settings.dimensions.x, self.settings.dimensions.y);
-        for (index,[x,y]) in DIRECTIONS.into_iter().enumerate().rev() {
-            if x == 0. && y == 0. {continue;} // Unit
-            let (x,y) = (x as usize, y as usize);
-            let opposite_index = Q - index - 1;
-            let current_table = &mut self.lattice[opposite_index];
-            for (row,column) in self.barriers.data.into_iter() {
-                let (row,column) = (*row, *column);
-                let min = (column as i8 + x as i8) < 0 || (row as i8 + y as i8) < 0;
-                let max = (column + x) < x_max || (row + y) < y_max;
-                if min || max {continue;}
-                current_table[(row + y, column + x)] = current_table[(row, column)];
-                current_table[(row, column)] = 0.0;
+        for positon in self.barriers.data.iter() {
+            for (index,table) in self.lattice.iter_mut().enumerate() {
+                let current = table[*positon];
+                if current == 0.0 {
+                    continue;
+                } 
+                let opposite_direction = Q - index - 1;
+                let [x,y] = DIRECTIONS[opposite_direction];
+                table[(positon.0 + x as usize, positon.1 + y as usize)] = current;
+                table[*positon] = 0.0;
+
             }
         }
     }
@@ -244,13 +300,15 @@ impl Lattice {
     }
 
     pub fn simulate(&mut self) {
+        self.debug.log(&self.ux, &self.uy);
         self.stream();
         self.bounce();
         self.collide();
+        self.debug.timestep += 1;
     }
 }
 
-use std::cell;
+
 //impl for indexing//
 use std::ops::{Index, IndexMut};
 impl Index<usize> for Lattice {
@@ -305,6 +363,19 @@ impl<T: Copy + AddAssign + SubAssign + MulAssign + DivAssign> Table<T> {
         self.data.iter_mut()
             .zip(rhs.data.iter())
             .for_each(|(lhs,rhs)| *lhs /= *rhs);
+    }
+}
+
+
+//DEBUG//
+
+impl Table<f32> {
+    pub fn print(&self) {
+        for row in 0..self.dimensions.y {
+            let start = row * self.dimensions.x;
+            let end = start + self.dimensions.x;
+            println!("{:?}",&self.data[start..end]);
+        }
     }
 }
 //##################//
