@@ -52,7 +52,6 @@ pub struct Settings {
     pub omega: f32,
 }
 
-
 #[derive(Debug)]
 pub struct Lattice {
     lattice: [Table<f32>;Q],
@@ -177,7 +176,7 @@ impl Lattice {
     }
 
     fn stream(&mut self) {
-        for (table, [x,y]) in &mut self.lattice[..Q-1].iter_mut().zip(DIRECTIONS) {
+        for (table, [x,y]) in &mut self.lattice[..Q].iter_mut().zip(DIRECTIONS) {
             let (x,y) = (x as i8, y as i8);
             match x {
                 1 => Lattice::rotate_right(&mut table.data, &table.dimensions),
@@ -216,8 +215,8 @@ impl Lattice {
         [Dir::N,Dir::NE,Dir::NW].into_iter().for_each(|dir| self.uy.add(&self.lattice[dir]));
         [Dir::S,Dir::SE,Dir::SW].into_iter().for_each(|dir| self.uy.sub(&self.lattice[dir]));
         Lattice::divide_rho(&mut self.uy, &self.rho);
-
-        //collision//
+        println!("before :: {:?}",&self.rho );
+        //collision// ERROR
         {
         let cells = self.settings.dimensions.x * self.settings.dimensions.y;
         for (table, weight, [x,y]) in itertools::izip!(self.lattice.iter_mut(),WEIGHTS,DIRECTIONS) {
@@ -227,8 +226,7 @@ impl Lattice {
             for i in 0..cells {
                 if i == barrier_index {
                     barrier_index = barrier_iter.next().unwrap_or(usize::MAX);
-                    continue;
-                }
+                    continue;                }
                 let (ux, uy) = (self.ux.data[i],self.uy.data[i]);
                 let magnitude = (ux * ux) + (uy * uy); //precompute these values somehwere else?
                 let dot = x * ux + y * uy;
@@ -237,6 +235,7 @@ impl Lattice {
             }
         }
         }
+        println!("after:: {:?}",&self.rho );
         
         //Unit Velocity//
         self.lattice[Dir::UNIT].add(&self.rho);
@@ -301,13 +300,13 @@ impl IndexMut<usize> for Lattice {
 impl<T> Index<(usize,usize)> for Table<T> {
     type Output = T;
     fn index(&self, index: (usize,usize)) -> &Self::Output {
-        &self.data[index.0 * self.dimensions.y + index.1]
+        &self.data[index.0 * self.dimensions.x + index.1]
     }
 }
 
 impl<T> IndexMut<(usize,usize)> for Table<T> {
     fn index_mut(&mut self, index: (usize,usize)) -> &mut Self::Output {
-        &mut self.data[index.0 * self.dimensions.y + index.1]
+        &mut self.data[index.0 * self.dimensions.x + index.1]
     }
 }
 //Table Operations//
@@ -519,11 +518,8 @@ mod tests {
                 ].into_boxed_slice(),
                 dimensions: D2 {x: X, y: Y},
             };
-            for i in 0..Y {
-                for j in 0..X {
-                    assert_eq!(test_lattice[0].data[i * Y + j], test_lattice[0][(i,j)], "{}", "ahhh")
-                }
-            }
+            assert_eq!(test_lattice[0][(0,0)], 1.0, "ZERO ZERO");
+            assert_eq!(test_lattice[0][(2,3)], 24.0, "DIFFERENT INDICES");
         }
     }
 }

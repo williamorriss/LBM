@@ -405,7 +405,7 @@ pub async fn run(generate: impl Fn () -> (Vec<LatticeCell>, [Vertex;4]), simulat
     let mut surface_configured = false;
 
     let mut now = std::time::Instant::now();
-    let simulation_step = 1000; //ms
+    let simulation_step = 1; //ms
     event_loop
         .run(move |event, control_flow| {
             match event {
