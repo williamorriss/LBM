@@ -468,5 +468,63 @@ mod tests {
 
         
     }
+
+    mod index {
+        use crate::lattice::{Lattice, Settings, Table, D2, D3,Q};
+
+        fn table_eq<T: PartialEq>(table1: &Table<T>, table2: &Table<T>) -> bool {
+            for i in 0..table1.dimensions.x * table1.dimensions.y  {
+                if table1.data[i] != table2.data[i] {
+                    return false;
+                }
+            }
+            true
+        }
+
+
+        #[test]
+        fn lattice_index() {
+            const X: usize = 6;
+            const Y: usize = 3;
+            let test_settings = Settings {
+                barriers: Table {
+                    data: vec![(1,1); X * Y].into_boxed_slice(),
+                    dimensions: D2 {x: X, y: Y},
+                },
+                dimensions: D3 {x: X, y: Y, z: Q},
+                omega: 0.0
+            };
+            let test_lattice = Lattice::new(&test_settings);
+            (0..Q).into_iter().for_each(|index| assert!(table_eq(&test_lattice.lattice[0], &test_lattice[0]), "Table index error at {}", index));
+        }
+
+        #[test]
+        fn table_index() {
+            const X: usize = 6;
+            const Y: usize = 3;
+            let test_settings = Settings {
+                barriers: Table {
+                    data: vec![(1,1); X * Y].into_boxed_slice(),
+                    dimensions: D2 {x: X, y: Y},
+                },
+                dimensions: D3 {x: X, y: Y, z: Q},
+                omega: 0.0
+            };
+            let mut test_lattice = Lattice::new(&test_settings);
+            test_lattice[0] = Table {
+                data : vec![
+                    01.0, 02.0, 03.0, 04.0, 05.0, 00.0, 
+                    11.0, 12.0, 13.0, 14.0, 15.0, 10.0, 
+                    21.0, 22.0, 23.0, 24.0, 25.0, 20.0, 
+                ].into_boxed_slice(),
+                dimensions: D2 {x: X, y: Y},
+            };
+            for i in 0..Y {
+                for j in 0..X {
+                    assert_eq!(test_lattice[0].data[i * Y + j], test_lattice[0][(i,j)], "{}", "ahhh")
+                }
+            }
+        }
+    }
 }
 //##################//
