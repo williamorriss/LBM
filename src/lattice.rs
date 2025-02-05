@@ -1,4 +1,6 @@
 use crate::window::render::{D2,SimulationData};
+use bitvec::bitvec;
+use bitvec::prelude::*;
 
 ///////////////////////////////////////
 ////// LB PARAMS AND CONSTANTS ////////
@@ -6,7 +8,6 @@ use crate::window::render::{D2,SimulationData};
 const HEIGHT: usize = 32; // grid height
 const WIDTH: usize = 512; // grid width
 const OMEGA: f32 = 1.0 / (3.0 * 0.002 + 0.5); // Relaxation parameter (function of viscosity)
-const U0: f32 = 0.1; // Initial speed
 const FOUR_NINTHS: f32 = 4.0 / 9.0; // 4/9
 const ONE_NINTH: f32 = 1.0 / 9.0; // 1/9
 const ONE_THIRTYSIXTH: f32 = 1.0 / 36.0; // 1/36
@@ -26,9 +27,11 @@ pub struct Lattice {
     south_east : Vec<f32>,
     south_west : Vec<f32>,
     // Barriers
-    bar : Vec<f32>, 
+    bar: BitVec, 
     speed: Vec<f32>,
     dimensions: D2,
+    timestep: u32,
+    time: u32,
 }
 
 impl Lattice {
@@ -45,9 +48,11 @@ impl Lattice {
             south_east: vec![0.0; length],
             south_west: vec![0.0; length],
             // Barriers
-            bar: vec![0.0; length], 
+            bar: bitvec![0;length], 
             speed: vec![0.0; length],
             dimensions: D2 {x: width, y: height},
+            timestep: 0,
+            time: 0,
         }
     }
 
@@ -57,10 +62,11 @@ impl Lattice {
 
     pub fn speed_show(&self) -> Vec<SimulationData> {
         self.speed.iter().enumerate()
-            .map(|(index,&speed)| if self.bar[index] == 0.0 {SimulationData{speed}} else {SimulationData{speed: -10.0}}).collect()
+            .map(|(index,&speed)| if !self.bar[index] {SimulationData{speed}} else {SimulationData{speed: -10.0}}).collect()
     }
 
     pub fn simulate(&mut self){
+        self.timestep += 1;
         use std::time::Instant;
         let start = Instant::now();
         // Update all cells
@@ -70,7 +76,8 @@ impl Lattice {
     
         // Measure and print elapsed time
         let elapsed = start.elapsed();
-        println!("T = {:?} ms", elapsed.as_millis());
+        self.time += elapsed.as_micros() as u32;
+        println!("T = {:?} micros :: AVG = {:?}", elapsed.as_micros(), self.time/ self.timestep);
     }
 }
 
@@ -97,7 +104,7 @@ pub fn initialize(lattice: &mut Lattice,xtop: usize, ytop: usize, yheight: usize
         let x = i % WIDTH;
         let y = i / WIDTH;
         if x == xtop && y >= ytop && y < (ytop + yheight) {
-            lattice.bar[i] = 1.0;
+            lattice.bar.set(i, true);
         }
     }
 }
@@ -142,7 +149,7 @@ fn bounce(lattice: &mut Lattice) {
         for y in 2..(HEIGHT - 2) {
             let idx = y * WIDTH + x;
             // If the cell contains a boundary
-            if lattice.bar[idx] != 0.0 {
+            if lattice.bar[idx] {
                 // Push densities back from whence they came, then clear the cell
                 lattice.north[idx - WIDTH] = lattice.south[idx];
                 lattice.south[idx] = 0.0;
@@ -174,7 +181,7 @@ fn collide(lattice: &mut Lattice) {
         for y in 1..(HEIGHT - 1) {
             let idx = y * WIDTH + x;
             // Skip over cells containing barriers
-            if lattice.bar[idx] == 0.0 {
+            if !lattice.bar[idx] {
                 // Compute the macroscopic density
                 let rho = lattice.unit[idx] + lattice.north[idx] + lattice.east[idx] + lattice.south[idx] + lattice.west[idx]
                     + lattice.north_east[idx] + lattice.south_east[idx] + lattice.south_west[idx] + lattice.north_west[idx];
