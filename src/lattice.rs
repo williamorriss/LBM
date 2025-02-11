@@ -1,3 +1,4 @@
+
 use crate::window::render::{D2,SimulationData};
 use bitvec::bitvec;
 use bitvec::prelude::*;
@@ -60,9 +61,26 @@ impl Lattice {
         self.dimensions
     }
 
+    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut [f32]> {
+        [
+            self.north.as_mut_slice(),
+            self.north_east.as_mut_slice(),
+            self.east.as_mut_slice(),
+            self.south_east.as_mut_slice(),
+            self.south.as_mut_slice(),
+            self.south_west.as_mut_slice(),
+            self.west.as_mut_slice(),
+            self.north_west.as_mut_slice(),
+            self.unit.as_mut_slice()
+        ].into_iter()
+    }
+
     pub fn speed_show(&self) -> Vec<SimulationData> {
+
         self.speed.iter().enumerate()
-            .map(|(index,&speed)| if !self.bar[index] {SimulationData{speed}} else {SimulationData{speed: -10.0}}).collect()
+            .map(|(index,&speed)| if !self.bar[index] {SimulationData{speed}} else {SimulationData{speed: -10.0}})
+            //.inspect(|data| println!("{:?}", data))
+            .collect()
     }
 
     pub fn simulate(&mut self){
@@ -88,25 +106,47 @@ pub fn initialize(lattice: &mut Lattice,xtop: usize, ytop: usize, yheight: usize
     let u0sq_4_5 = 4.5 * u0sq;
     let u0_3 = 3.0 * u0;
 
-    // Loop through the cells, initialize densities
-    for i in 0..(HEIGHT * WIDTH) {
-        lattice.unit[i] = FOUR_NINTHS * (1.0 - u0sq_1_5);
-        lattice.north[i] = ONE_NINTH * (1.0 - u0sq_1_5);
-        lattice.south[i] = ONE_NINTH * (1.0 - u0sq_1_5);
-        lattice.east[i] = ONE_NINTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
-        lattice.west[i] = ONE_NINTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5);
-        lattice.north_west[i] = ONE_THIRTYSIXTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5);
-        lattice.north_east[i] = ONE_THIRTYSIXTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
-        lattice.south_west[i] = ONE_THIRTYSIXTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5);
-        lattice.south_east[i] = ONE_THIRTYSIXTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
 
-        // Initialize the barrier
+
+    lattice.unit.iter_mut().for_each(|cell| *cell = FOUR_NINTHS * (1.0 - u0sq_1_5));
+    lattice.north.iter_mut().for_each(|cell| *cell = ONE_NINTH * (1.0 - u0sq_1_5));
+    lattice.south.iter_mut().for_each(|cell| *cell = ONE_NINTH * (1.0 - u0sq_1_5));
+    lattice.east.iter_mut().for_each(|cell| *cell = ONE_NINTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5));
+    lattice.west.iter_mut().for_each(|cell| *cell = ONE_NINTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5));
+    lattice.north_west.iter_mut().for_each(|cell| *cell = ONE_THIRTYSIXTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5));
+    lattice.north_east.iter_mut().for_each(|cell| *cell = ONE_THIRTYSIXTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5));
+    lattice.south_west.iter_mut().for_each(|cell| *cell = ONE_THIRTYSIXTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5));
+    lattice.south_east.iter_mut().for_each(|cell| *cell = ONE_THIRTYSIXTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5));
+
+    for i in 0..HEIGHT*WIDTH {
         let x = i % WIDTH;
         let y = i / WIDTH;
         if x == xtop && y >= ytop && y < (ytop + yheight) {
             lattice.bar.set(i, true);
         }
     }
+    
+
+
+    // Loop through the cells, initialize densities
+    // for i in 0..(HEIGHT * WIDTH) {
+    //     lattice.unit[i] = FOUR_NINTHS * (1.0 - u0sq_1_5);
+    //     lattice.north[i] = ONE_NINTH * (1.0 - u0sq_1_5);
+    //     lattice.south[i] = ONE_NINTH * (1.0 - u0sq_1_5);
+    //     lattice.east[i] = ONE_NINTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
+    //     lattice.west[i] = ONE_NINTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5);
+    //     lattice.north_west[i] = ONE_THIRTYSIXTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5);
+    //     lattice.north_east[i] = ONE_THIRTYSIXTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
+    //     lattice.south_west[i] = ONE_THIRTYSIXTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5);
+    //     lattice.south_east[i] = ONE_THIRTYSIXTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
+
+    //     // Initialize the barrier
+    //     let x = i % WIDTH;
+    //     let y = i / WIDTH;
+    //     if x == xtop && y >= ytop && y < (ytop + yheight) {
+    //         lattice.bar.set(i, true);
+    //     }
+    // }
 }
 
 fn stream(lattice: &mut Lattice) {
