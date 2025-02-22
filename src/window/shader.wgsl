@@ -14,15 +14,18 @@ struct VertexOutput {
     @location(1) color: vec3<f32>
 }
 
+fn is_nan(x: f32) -> bool {
+    return !(x < 0.0 || 0.0 < x || x == 0.0);
+}
 
 fn heatmap(speed: f32) -> vec3<f32> {
-    if speed < 0 {
+    if speed < 0.0 {
         return  vec3<f32>(0.0,1.0,0.0);
     }
     const START_COLOR: vec3<f32> = vec3<f32>(0.0, 0.0, 1.0); // Blue
     const END_COLOR: vec3<f32> = vec3<f32>(1.0, 0.0, 0.0);   // Red
     const MIN: f32 = 0.0;
-    const MAX: f32 = 0.3;
+    const MAX: f32 = 0.1;
     // let log_speed = log(clamp(speed, MIN, MAX) + 1.0);
 
     // let log_min = log(MIN + 1.0);

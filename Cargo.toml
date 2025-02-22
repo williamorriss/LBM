@@ -7,6 +7,14 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[profile.release]
+opt-level = 3          # Highest optimization level
+lto = "fat"            # Link Time Optimization (better performance)
+codegen-units = 1      # Forces a single codegen unit (improves optimizations)
+debug = false          # Removes debug symbols (optional)
+panic = "abort" 
+
+
 [dependencies]
 plotters = "*"
 bitvec = "*"
@@ -14,11 +22,10 @@ palette = "*"
 itertools = "*"
 rand = "*"
 anyhow = "1.0"
-
 env_logger = "0.10"
 pollster = "0.3"
 log = "0.4"
-wgpu = "24.0.1" #really out of date
+wgpu = "24.0.1"
 winit = { version = "0.29", features = ["rwh_05"] }#really out of date
 bytemuck = { version = "1.21", features = [ "derive" ] }
 
