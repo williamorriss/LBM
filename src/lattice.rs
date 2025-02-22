@@ -18,15 +18,18 @@ const ONE_THIRTYSIXTH: f32 = 1.0 / 36.0; // 1/36
 ///////////////////////////////////////
 // Microscopic densities
 pub struct Lattice {
-    unit : Vec<f32>,
-    north : Vec<f32>,
-    south : Vec<f32>,
-    east : Vec<f32>,
-    west : Vec<f32>,
-    north_west : Vec<f32>,
-    north_east : Vec<f32>,
-    south_east : Vec<f32>,
-    south_west : Vec<f32>,
+    unit: Vec<f32>,
+    north: Vec<f32>,
+    south: Vec<f32>,
+    east: Vec<f32>,
+    west: Vec<f32>,
+    north_west: Vec<f32>,
+    north_east: Vec<f32>,
+    south_east: Vec<f32>,
+    south_west: Vec<f32>,
+    rho: Vec<f32>,
+    ux: Vec<f32>,
+    uy: Vec<f32>,
     // Barriers
     bar: BitVec, 
     speed: Vec<f32>,
@@ -48,6 +51,9 @@ impl Lattice {
             north_east: vec![0.0; length],
             south_east: vec![0.0; length],
             south_west: vec![0.0; length],
+            rho: vec![0.0; length],
+            ux: vec![0.0; length],
+            uy: vec![0.0; length],
             // Barriers
             bar: bitvec![0;length], 
             speed: vec![0.0; length],
@@ -61,18 +67,38 @@ impl Lattice {
         self.dimensions
     }
 
-    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut [f32]> {
-        [
-            self.north.as_mut_slice(),
-            self.north_east.as_mut_slice(),
-            self.east.as_mut_slice(),
-            self.south_east.as_mut_slice(),
-            self.south.as_mut_slice(),
-            self.south_west.as_mut_slice(),
-            self.west.as_mut_slice(),
-            self.north_west.as_mut_slice(),
-            self.unit.as_mut_slice()
-        ].into_iter()
+    #[inline]
+    fn rotate_left (array: &mut [f64],width: usize) {
+        array.chunks_mut(width).into_iter().for_each(|row| {
+            let last = row[1];
+            row.copy_within(2.., 1);
+            row[row.len() - 2] = last;
+        });
+    }
+
+    #[inline]
+    fn rotate_right (array: &mut [f64],width: usize) {
+        array.chunks_mut(shape.x).into_iter().for_each(|row| {
+            let first = row[row.len() - 2];
+            row.copy_within(1..row.len() - 2, 2);
+            row[1] = first;
+        });
+    }
+
+    #[inline]
+    fn rotate_down (array: &mut [f64],width: usize) {
+        let end = array.len() - 2*width;
+        let first = &array[end..end+width].to_vec();
+        array.copy_within(width..end, 2*width);
+        array[width..2*width].copy_from_slice(&first)
+    }
+
+    #[inline]
+    fn rotate_up(array: &mut [f64], width: usize) {
+        let end = array.len() - 2*width;
+        let last = &array[with..2*width].to_vec();
+        array.copy_within(2*width..end, width);
+        array[end..end+width].copy_from_slice(&last);
     }
 
     pub fn speed_show(&self) -> Vec<SimulationData> {
@@ -96,6 +122,21 @@ impl Lattice {
         let elapsed = start.elapsed();
         self.time += elapsed.as_micros() as u32;
         println!("T = {:?} micros :: AVG = {:?}", elapsed.as_micros(), self.time/ self.timestep);
+    }
+
+    pub fn table_iter<'a>(&'a self) -> impl Iterator<Item = &'a[f32]> {
+        [
+            self.unit.as_slice(),
+            self.north.as_slice(),
+            self.south.as_slice(),
+            self.east.as_slice(),
+            self.west.as_slice(),
+            self.north_west.as_slice(),
+            self.north_east.as_slice(),
+            self.south_east.as_slice(),
+            self.south_west.as_slice(),
+
+        ].into_iter()
     }
 }
 
@@ -139,14 +180,6 @@ pub fn initialize(lattice: &mut Lattice,xtop: usize, ytop: usize, yheight: usize
     //     lattice.north_east[i] = ONE_THIRTYSIXTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
     //     lattice.south_west[i] = ONE_THIRTYSIXTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5);
     //     lattice.south_east[i] = ONE_THIRTYSIXTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
-
-    //     // Initialize the barrier
-    //     let x = i % WIDTH;
-    //     let y = i / WIDTH;
-    //     if x == xtop && y >= ytop && y < (ytop + yheight) {
-    //         lattice.bar.set(i, true);
-    //     }
-    // }
 }
 
 fn stream(lattice: &mut Lattice) {
@@ -215,45 +248,99 @@ fn bounce(lattice: &mut Lattice) {
     }
 }
 
+fn add_table(lhs: &mut [f32], rhs: &[f32]) {
+    lhs.iter_mut().zip(rhs).for_each(|(l,r)| *l += r);
+}
+fn sub_table(lhs: &mut [f32], rhs: &[f32]) {
+    lhs.iter_mut().zip(rhs).for_each(|(l,r)| *l -= r);
+}
+fn div_table(lhs: &mut [f32], rhs: &[f32]) {
+    lhs.iter_mut().zip(rhs).for_each(|(l,r)| *l /= r);
+}
+
+fn add_tables<'a>(lhs: &'a mut [f32], tables: impl Iterator<Item = &'a [f32]>) {
+    tables.for_each(|table| add_table(lhs, table));
+}
+
+fn calc_ux(&mut self) {
+    self.ux = lattic.unit;
+    add_table(&mut self.ux, &lattice.east);
+    add_table(&mut self.ux, &lattice.north_east);
+    add_table(&mut self.ux, &lattice.south_east);
+
+    sub_table(&mut self.ux, &lattice.west);
+    sub_table(&mut self.ux, &lattice.north_west);
+    sub_table(&mut self.ux, &lattice.south_west);
+
+    div_table(&mut table, &self.rho);
+}
+
+fn calc_uy(&mut self) {
+    self.uy = lattic.unit;
+    add_table(&mut self.uy, &lattice.north);
+    add_table(&mut self.uy, &lattice.north_east);
+    add_table(&mut self.uy, &lattice.north_west);
+
+    sub_table(&mut self.uy, &lattice.south);
+    sub_table(&mut self.uy, &lattice.south_east);
+    sub_table(&mut self.uy, &lattice.south_west);
+
+    div_table(&mut self.uy, &self.rho);
+}
+
+
 fn collide(lattice: &mut Lattice) {
     // Do not touch cells on top, bottom, left, or right
-    for x in 1..(WIDTH - 1) {
-        for y in 1..(HEIGHT - 1) {
-            let idx = y * WIDTH + x;
-            // Skip over cells containing barriers
-            if !lattice.bar[idx] {
-                // Compute the macroscopic density
-                let rho = lattice.unit[idx] + lattice.north[idx] + lattice.east[idx] + lattice.south[idx] + lattice.west[idx]
-                    + lattice.north_east[idx] + lattice.south_east[idx] + lattice.south_west[idx] + lattice.north_west[idx];
+    let indices = (1..(WIDTH - 1))
+        .zip(1..(HEIGHT - 1))
+        .map(|(x,y)| y * WIDTH + x)
+        .filter(|&idx| !lattice.bar[idx]);
+    
+    // Compute the macroscopic density
+    add_tables(&mut lattice.rho, lattice.table_iter());
 
-                // Compute the macroscopic velocities (vx and vy)
-                let ux = (lattice.east[idx] + lattice.north_east[idx] + lattice.south_east[idx] - lattice.west[idx] - lattice.north_west[idx] - lattice.south_west[idx]) / rho;
-                let uy = (lattice.north[idx] + lattice.north_east[idx] + lattice.north_west[idx] - lattice.south[idx] - lattice.south_east[idx] - lattice.south_west[idx]) / rho;
-                // Compute squares of velocities and cross-term
-                let vx2 = ux * ux;
-                let vy2 = uy * uy;
-                let vxvy2 = 2.0 * ux * uy;
-                let v2 = vx2 + vy2;
-                let v215 = 1.5 * v2;
+    lattice.calc_ux();
+    lattice.calc_uy();
 
-                lattice.speed[idx] = (vx2 + vy2).sqrt();
-                //println!("{:?}", lattice.speed[idx]);
+    lattice.speed = lattice.ux.zip(lattice.uy).map(|ux,uy| (ux * ux + uy* uy).sqrt());
 
-                // Perform collision updates
-                lattice.east[idx] += OMEGA * (ONE_NINTH * rho * (1.0 + 3.0 * ux + 4.5 * vx2 - v215) - lattice.east[idx]);
-                lattice.west[idx] += OMEGA * (ONE_NINTH * rho * (1.0 - 3.0 * ux + 4.5 * vx2 - v215) - lattice.west[idx]);
-                lattice.north[idx] += OMEGA * (ONE_NINTH * rho * (1.0 + 3.0 * uy + 4.5 * vy2 - v215) - lattice.north[idx]);
-                lattice.south[idx] += OMEGA * (ONE_NINTH * rho * (1.0 - 3.0 * uy + 4.5 * vy2 - v215) - lattice.south[idx]);
-                lattice.north_east[idx] += OMEGA * (ONE_THIRTYSIXTH * rho * (1.0 + 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215) - lattice.north_east[idx]);
-                lattice.north_west[idx] += OMEGA * (ONE_THIRTYSIXTH * rho * (1.0 - 3.0 * ux + 3.0 * uy + 4.5 * (v2 - vxvy2) - v215) - lattice.north_west[idx]);
-                lattice.south_east[idx] += OMEGA * (ONE_THIRTYSIXTH * rho * (1.0 + 3.0 * ux - 3.0 * uy + 4.5 * (v2 - vxvy2) - v215) - lattice.south_east[idx]);
-                lattice.south_west[idx] += OMEGA * (ONE_THIRTYSIXTH * rho * (1.0 - 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215) - lattice.south_west[idx]);
+    lattice.east.iter_mut()
+        .zip(self.rho)
+        .for_each(|cell, &rho| *cell += OMEGA * (ONE_NINTH * rho * (1.0 + 3.0 * ux + 4.5 * vx2 - v215) - *cell));
 
-                // Conserve mass
-                lattice.unit[idx] = rho - (lattice.east[idx] + lattice.west[idx] + lattice.north[idx] + lattice.south[idx] + lattice.north_east[idx] + lattice.south_east[idx] + lattice.north_west[idx] + lattice.south_west[idx]);
-            }
-        }
-    }
+    lattice.west.iter_mut()
+    .zip(self.rho)
+    .for_each(|cell, &rho| *cell += OMEGA * (ONE_NINTH * rho * (1.0 - 3.0 * ux + 4.5 * vx2 - v215) - *cell));
+
+    lattice.north.iter_mut()
+    .zip(self.rho)
+    .for_each(|cell, &rho| *cell += OMEGA * (ONE_NINTH * rho * (1.0 + 3.0 * uy + 4.5 * vy2 - v215) - *cell));
+
+
+    lattice.south.iter_mut()
+    .zip(self.rho)
+    .for_each(|cell, &rho| *cell += OMEGA * (ONE_NINTH * rho * (1.0 - 3.0 * uy + 4.5 * vy2 - v215) - *cell));
+
+    
+
+
+    // Compute the macroscopic velocities (vx and vy)
+    // Compute squares of velocities and cross-term
+    let vx2 = ux * ux;
+    let vy2 = uy * uy;
+    let vxvy2 = 2.0 * ux * uy;
+    let v2 = vx2 + vy2;
+    let v215 = 1.5 * v2;
+
+
+    // Perform collision updates
+    lattice.north_east[idx] += OMEGA * (ONE_THIRTYSIXTH * rho * (1.0 + 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215) - lattice.north_east[idx]);
+    lattice.north_west[idx] += OMEGA * (ONE_THIRTYSIXTH * rho * (1.0 - 3.0 * ux + 3.0 * uy + 4.5 * (v2 - vxvy2) - v215) - lattice.north_west[idx]);
+    lattice.south_east[idx] += OMEGA * (ONE_THIRTYSIXTH * rho * (1.0 + 3.0 * ux - 3.0 * uy + 4.5 * (v2 - vxvy2) - v215) - lattice.south_east[idx]);
+    lattice.south_west[idx] += OMEGA * (ONE_THIRTYSIXTH * rho * (1.0 - 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215) - lattice.south_west[idx]);
+
+    // Conserve mass
+    lattice.unit[idx] = rho - (lattice.east[idx] + lattice.west[idx] + lattice.north[idx] + lattice.south[idx] + lattice.north_east[idx] + lattice.south_east[idx] + lattice.north_west[idx] + lattice.south_west[idx]);
 }
 
 
