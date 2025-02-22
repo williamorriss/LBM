@@ -7,7 +7,7 @@ use bitvec::prelude::*;
 ///////////////////////////////////////
 const HEIGHT: usize = 32; // grid height
 const WIDTH: usize = 512; // grid width
-const OMEGA: f32 = 1.0 / (3.0 * 0.002 + 0.5); // Relaxation parameter (function of viscosity)
+const OMEGA: f32 = 1.0; // Relaxation parameter (function of viscosity)
 const FOUR_NINTHS: f32 = 4.0 / 9.0; // 4/9
 const ONE_NINTH: f32 = 1.0 / 9.0; // 1/9
 const ONE_THIRTYSIXTH: f32 = 1.0 / 36.0; // 1/36
@@ -79,35 +79,36 @@ impl Lattice {
         self.time += elapsed.as_micros() as u32;
         println!("T = {:?} micros :: AVG = {:?}", elapsed.as_micros(), self.time/ self.timestep);
     }
-}
 
-pub fn initialize(lattice: &mut Lattice,xtop: usize, ytop: usize, yheight: usize, u0: f32) {
-    // Useful pre-computed constants
-    let u0sq = u0 * u0;
-    let u0sq_1_5 = 1.5 * u0sq;
-    let u0sq_4_5 = 4.5 * u0sq;
-    let u0_3 = 3.0 * u0;
-
-    // Loop through the cells, initialize densities
-    for i in 0..(HEIGHT * WIDTH) {
-        lattice.unit[i] = FOUR_NINTHS * (1.0 - u0sq_1_5);
-        lattice.north[i] = ONE_NINTH * (1.0 - u0sq_1_5);
-        lattice.south[i] = ONE_NINTH * (1.0 - u0sq_1_5);
-        lattice.east[i] = ONE_NINTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
-        lattice.west[i] = ONE_NINTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5);
-        lattice.north_west[i] = ONE_THIRTYSIXTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5);
-        lattice.north_east[i] = ONE_THIRTYSIXTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
-        lattice.south_west[i] = ONE_THIRTYSIXTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5);
-        lattice.south_east[i] = ONE_THIRTYSIXTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
-
-        // Initialize the barrier
-        let x = i % WIDTH;
-        let y = i / WIDTH;
-        if x == xtop && y >= ytop && y < (ytop + yheight) {
-            lattice.bar.set(i, true);
+    pub fn initialize(&mut self,xtop: usize, ytop: usize, yheight: usize, u0: f32) {
+        // Useful pre-computed constants
+        let u0sq = u0 * u0;
+        let u0sq_1_5 = 1.5 * u0sq;
+        let u0sq_4_5 = 4.5 * u0sq;
+        let u0_3 = 3.0 * u0;
+    
+        // Loop through the cells, initialize densities
+        for i in 0..(HEIGHT * WIDTH) {
+            self.unit[i] = FOUR_NINTHS * (1.0 - u0sq_1_5);
+            self.north[i] = ONE_NINTH * (1.0 - u0sq_1_5);
+            self.south[i] = ONE_NINTH * (1.0 - u0sq_1_5);
+            self.east[i] = ONE_NINTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
+            self.west[i] = ONE_NINTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5);
+            self.north_west[i] = ONE_THIRTYSIXTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5);
+            self.north_east[i] = ONE_THIRTYSIXTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
+            self.south_west[i] = ONE_THIRTYSIXTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5);
+            self.south_east[i] = ONE_THIRTYSIXTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
+    
+            // Initialize the barrier
+            let x = i % WIDTH;
+            let y = i / WIDTH;
+            if x == xtop && y >= ytop && y < (ytop + yheight) {
+                self.bar.set(i, true);
+            }
         }
     }
 }
+
 
 fn stream(lattice: &mut Lattice) {
     // Stream all internal cells
@@ -196,7 +197,7 @@ fn collide(lattice: &mut Lattice) {
                 let v2 = vx2 + vy2;
                 let v215 = 1.5 * v2;
 
-                lattice.speed[idx] = (vx2 + vy2).sqrt();
+                lattice.speed[idx] = vx2 + vy2;
                 //println!("{:?}", lattice.speed[idx]);
 
                 // Perform collision updates

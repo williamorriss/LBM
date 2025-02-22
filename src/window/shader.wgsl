@@ -22,15 +22,14 @@ fn heatmap(speed: f32) -> vec3<f32> {
     const START_COLOR: vec3<f32> = vec3<f32>(0.0, 0.0, 1.0); // Blue
     const END_COLOR: vec3<f32> = vec3<f32>(1.0, 0.0, 0.0);   // Red
     const MIN: f32 = 0.0;
-    const MAX: f32 = 1.0;
+    const MAX: f32 = 0.3;
     // let log_speed = log(clamp(speed, MIN, MAX) + 1.0);
 
     // let log_min = log(MIN + 1.0);
     // let log_max = log(MAX + 1.0);
     // let t = (log_speed - log_min) / (log_max - log_min);
 
-    let sspeed = clamp(speed, MIN, MAX);
-    let t = (sspeed - MIN) / (MAX-MIN);
+    let t = clamp((speed - MIN) / (MAX-MIN),0.0,1.0);
 
     return mix(START_COLOR, END_COLOR, t);
 }
