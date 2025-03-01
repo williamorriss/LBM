@@ -81,8 +81,10 @@ impl Lattice {
     
         // Measure and print elapsed time
         let elapsed = start.elapsed();
-        self.time += elapsed.as_micros() as u32;
-        println!("T = {:?} micros :: AVG = {:?}", elapsed.as_micros(), self.time/ self.timestep);
+        self.time += elapsed.as_millis() as u32;
+        if self.timestep % 100 == 0 {
+            println!("T = {:?} millis :: AVG = {:?}", elapsed.as_millis(), self.time/ self.timestep);
+        }
     }
 
     pub fn initialize(&mut self, u0: f32) {
