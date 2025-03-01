@@ -1,25 +1,24 @@
 use std::iter;
-use crate::lattice::Lattice;
 use wgpu::util::DeviceExt;
 use winit::{
     event::*,
     event_loop::EventLoop,
     keyboard::{KeyCode, PhysicalKey},
-    window::{Window, WindowBuilder},
+    window::Window,
 };
 #[derive(Clone,Copy,Debug)]
 pub struct D2 {
     pub x: usize,
     pub y: usize,
 }
-
-use super::texture;
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct LatticeCell {
     pub position: [f32;2],
     pub color: [f32;3],
 }
+
+use std::sync::{Arc, Mutex};
 
 impl LatticeCell {
     fn desc() -> wgpu::VertexBufferLayout<'static> {
@@ -73,7 +72,6 @@ impl SimulationData {
 
 }
 
-
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {
@@ -99,7 +97,7 @@ impl Vertex {
 
 
 #[allow(dead_code)]
-struct State<'a> {
+pub struct State<'a> {
     surface: wgpu::Surface<'a>,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -109,12 +107,11 @@ struct State<'a> {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_indices: u32,
-    diffuse_texture: texture::Texture,
-    diffuse_bind_group: wgpu::BindGroup,
     cells: Vec<LatticeCell>,
     cell_buffer: wgpu::Buffer,
     simulation_buffer: wgpu::Buffer,
     window: &'a Window,
+    simulation_data: Arc<Mutex<Vec<SimulationData>>>,
 }
 
 fn make_vertices(dimensions: D2) -> Vec<Vertex> {
@@ -156,11 +153,11 @@ fn make_cells(dim: D2) -> Vec<LatticeCell> {
 
 
 impl<'a> State<'a> {
-    async fn new(window: &'a Window, simulation: &mut Lattice) -> State<'a>     {
+    pub async fn new(window: &'a Window, simulation_data: Arc<Mutex<Vec<SimulationData>>>, dimensions: D2) -> State<'a>     {
         let size = window.inner_size();
 
-        let vertices = make_vertices(simulation.get_coordinates());
-        let cells = make_cells(simulation.get_coordinates());
+        let vertices = make_vertices(dimensions);
+        let cells = make_cells(dimensions);
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
@@ -218,56 +215,13 @@ impl<'a> State<'a> {
             }
         );
 
-        let initial_vortex = simulation.speed_show();
         let simulation_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
                 label: Some("Simlation Buffer"),
-                contents: bytemuck::cast_slice(&initial_vortex),
+                contents: bytemuck::cast_slice(&vec![0.0;dimensions.x * dimensions.y]),
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             }
         );
-
-        let diffuse_bytes = include_bytes!("casio.png");
-        let diffuse_texture = 
-            texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "casio.png").unwrap();
-
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-                label: Some("texture_bind_group_layout"),
-            });
-
-        let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-                },
-            ],
-            label: Some("diffuse_bind_group"),
-        });
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
@@ -277,7 +231,7 @@ impl<'a> State<'a> {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&texture_bind_group_layout],
+                bind_group_layouts: &[],
                 push_constant_ranges: &[],
             });
 
@@ -349,11 +303,10 @@ impl<'a> State<'a> {
             vertex_buffer,
             index_buffer,
             num_indices: Vertex::INDICES.len() as u32,
-            diffuse_texture,
-            diffuse_bind_group,
             cell_buffer,
             cells: cells.to_vec(),
             simulation_buffer,
+            simulation_data,
             window,
         }
     }
@@ -376,17 +329,17 @@ impl<'a> State<'a> {
         false
     }
 
-    fn update(&mut self, simulation: &mut Lattice) {
-        simulation.simulate();
+    fn update(&mut self) {
         let encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Simulation Encoder"),
             });
-        let vortex = simulation.speed_show();
-        self.queue.write_buffer(&self.simulation_buffer,0, bytemuck::cast_slice(&vortex));
+        let vortex = self.simulation_data.lock().unwrap();
+        self.queue.write_buffer(&self.simulation_buffer,0, bytemuck::cast_slice(&vortex.as_slice()));
         self.queue.submit(std::iter::once(encoder.finish()));
     }
+
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
@@ -422,8 +375,7 @@ impl<'a> State<'a> {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
-
+            
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_vertex_buffer(1, self.cell_buffer.slice(..));
             render_pass.set_vertex_buffer(2, self.simulation_buffer.slice(..));
@@ -440,15 +392,10 @@ impl<'a> State<'a> {
     }
 }
 
-pub async fn run(simulation: &mut Lattice) {
+
+pub async fn run<'a>(state: &mut State<'a>, event_loop: EventLoop<()>) {
     env_logger::init();
-
-    let event_loop = EventLoop::new().unwrap();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
-
-    let mut state = State::new(&window, simulation).await;
     let mut surface_configured = false;
-
     let mut now = std::time::Instant::now();
     let simulation_step = 0; //ms
     event_loop
@@ -482,7 +429,7 @@ pub async fn run(simulation: &mut Lattice) {
                                     return;
                                 }
                                 if now.elapsed().as_millis() > simulation_step {
-                                    state.update(simulation);
+                                    state.update();
                                     now = std::time::Instant::now();
                                 }
                                 match state.render() {
