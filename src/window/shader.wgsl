@@ -8,10 +8,13 @@ struct VertexInput {
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
+    @location(0) tex_coords: vec2<f32>,
     @location(1) color: vec3<f32>
 }
 
-
+fn is_nan(x: f32) -> bool {
+    return !(x < 0.0 || 0.0 < x || x == 0.0);
+}
 
 fn heatmap(speed: f32) -> vec3<f32> {
     if speed < 0.0 {
