@@ -83,29 +83,31 @@ impl Lattice {
         let elapsed = start.elapsed();
         self.time += elapsed.as_millis() as u32;
         if self.timestep % 500 == 0 {
-            println!("T = {:?} millis :: AVG = {:?}", elapsed.as_millis(), self.time/ self.timestep);
+            print!("T = {:?} millis :: AVG = {:?}\n", elapsed.as_millis(), self.time/ self.timestep);
         }
     }
 
-    pub fn initialize(&mut self, u0: f32) {
+    pub fn initialize(&mut self, ux0: f32, uy0: f32) {
         // Useful pre-computed constants
-        let u0sq = u0 * u0;
-        let u0sq_1_5 = 1.5 * u0sq;
-        let u0sq_4_5 = 4.5 * u0sq;
-        let u0_3 = 3.0 * u0;
+        let vx2 = ux0 * ux0;
+        let vy2 = uy0 * uy0;
+        let vxvy2 = 2.0 * ux0 * uy0;
+        let v2 = vx2 + vy2;
+        let v215 = 1.5 * v2;
+
     
         // Loop through the cells, initialize densities
-        for i in 0..(self.height * self.width) {
-            self.unit[i] = FOUR_NINTHS * (1.0 - u0sq_1_5);
-            self.north[i] = ONE_NINTH * (1.0 - u0sq_1_5);
-            self.south[i] = ONE_NINTH * (1.0 - u0sq_1_5);
-            self.east[i] = ONE_NINTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
-            self.west[i] = ONE_NINTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5);
-            self.north_west[i] = ONE_THIRTYSIXTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5);
-            self.north_east[i] = ONE_THIRTYSIXTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
-            self.south_west[i] = ONE_THIRTYSIXTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5);
-            self.south_east[i] = ONE_THIRTYSIXTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
-    
+        for idx in 0..(self.height * self.width) {            
+            self.unit[idx] = FOUR_NINTHS  * (1.0 - v215);
+            self.east[idx] = ONE_NINTH * (1.0 + 3.0 * ux0 + 4.5 * vx2 - v215);
+            self.west[idx] = ONE_NINTH * (1.0 - 3.0 * ux0 + 4.5 * vx2 - v215);
+            self.north[idx] = ONE_NINTH * (1.0 + 3.0 * uy0 + 4.5 * vy2 - v215);
+            self.south[idx] = ONE_NINTH * (1.0 - 3.0 * uy0 + 4.5 * vy2 - v215);
+            self.north_east[idx] = ONE_THIRTYSIXTH * (1.0 + 3.0 * (ux0 + uy0) + 4.5 * (v2 + vxvy2) - v215);
+            self.north_west[idx] = ONE_THIRTYSIXTH *  (1.0 - 3.0 * ux0 + 3.0 * uy0 + 4.5 * (v2 - vxvy2) - v215);
+            self.south_east[idx] = ONE_THIRTYSIXTH * (1.0 + 3.0 * ux0 - 3.0 * uy0 + 4.5 * (v2 - vxvy2) - v215);
+            self.south_west[idx] = ONE_THIRTYSIXTH * (1.0 - 3.0 * (ux0 + uy0) + 4.5 * (v2 + vxvy2) - v215);
+
         }
     }
 
