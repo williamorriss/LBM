@@ -82,7 +82,7 @@ impl Lattice {
         // Measure and print elapsed time
         let elapsed = start.elapsed();
         self.time += elapsed.as_millis() as u32;
-        if self.timestep % 100 == 0 {
+        if self.timestep % 500 == 0 {
             println!("T = {:?} millis :: AVG = {:?}", elapsed.as_millis(), self.time/ self.timestep);
         }
     }
@@ -106,39 +106,92 @@ impl Lattice {
             self.south_west[i] = ONE_THIRTYSIXTH * (1.0 - u0_3 + u0sq_4_5 - u0sq_1_5);
             self.south_east[i] = ONE_THIRTYSIXTH * (1.0 + u0_3 + u0sq_4_5 - u0sq_1_5);
     
-            // // Initialize the barrier
-            // let x = i % lattice.width;
-            // let y = i / lattice.width;
-            // if x == xtop && y >= ytop && y < (ytop + ylattice.lattice.lattice.lattice.lattice.lattice.lattice.height) {
-            //     self.bar.set(i, true);
-            // }
         }
     }
 
 
     fn stream(&mut self) {
+        let height = self.height;
+        let width = self.width;
+
+        let north = &mut self.north;
+        let south = &mut self.south;
+        let east = &mut self.east;
+        let west = &mut self.west;
+        let north_west = &mut self.north_west;
+        let north_east = &mut self.north_east;
+        let south_east = &mut self.south_east;
+        let south_west = &mut self.south_west;
         // Stream all internal cells
-        for y in 0..(&self.height - 1) {
-            for x in 0..(&self.width- 1) {
-                let idx = y * self.width + x;
-                // Movement north
-                self.north[idx] = self.north[idx + self.width];
-                // Movement northwest
-                self.north_west[idx] = self.north_west[idx + self.width + 1];
-                // Movement west
-                self.west[idx] = self.west[idx + 1];
-                // Movement south
-                self.south[(self.height - y - 1) * self.width + x] = self.south[(self.height - y - 2) * self.width + x];
-                // Movement southwest
-                self.south_west[(self.height - y - 1) * self.width + x] = self.south_west[(self.height - y - 2) * self.width + x + 1];
-                // Movement east
-                self.east[y * self.width + (self.width - x - 1)] = self.east[y * self.width + (self.width - x - 2)];
-                // Movement northeast
-                self.north_east[y *self.width + (self.width - x - 1)] = self.north_east[y * self.width + self.width + (self.width - x - 2)];
-                // Movement southeast
-                self.south_east[(self.height - y - 1) * self.width + (self.width - x - 1)] = self.south_east[(self.height - y - 2) * self.width + (self.width - x - 2)];
-            }
-        }
+        std::thread::scope(|s| {
+            s.spawn(move|| {
+                for y in 0..(height - 1) {
+                    for x in 0..(width- 1) {
+                        let idx = y * width + x;
+                        north[idx] = north[idx + width];
+                    }
+                }
+            });
+
+            s.spawn(move|| {
+                for y in 0..(height - 1) {
+                    for x in 0..(width- 1) {
+                        let idx = y * width + x;
+                        north_west[idx] = north_west[idx + width + 1];
+                    }
+                }
+            });
+
+            s.spawn(move|| {
+                for y in 0..(height - 1) {
+                    for x in 0..(width- 1) {
+                        let idx = y * width + x;
+                        west[idx] = west[idx + 1];
+                    }
+                }
+            });
+
+            s.spawn(move|| {
+                for y in 0..(height - 1) {
+                    for x in 0..(width- 1) {
+                        south[(height - y - 1) * width + x] = south[(height - y - 2) * width + x];
+                    }
+                }
+            });
+
+            s.spawn(move|| {
+                for y in 0..(height - 1) {
+                    for x in 0..(width- 1) {
+                        south_west[(height - y - 1) * width + x] = south_west[(height - y - 2) * width + x + 1];
+                    }
+                }
+            });
+
+            s.spawn(move|| {
+                for y in 0..(height - 1) {
+                    for x in 0..(width- 1) {
+                        east[y * width + (width - x - 1)] = east[y * width + (width - x - 2)];
+                    }
+                }
+            });
+
+            s.spawn(move|| {
+                for y in 0..(height - 1) {
+                    for x in 0..(width- 1) {
+                        north_east[y * width + (width - x - 1)] = north_east[y * width + width + (width - x - 2)];
+                    }
+                }
+            });
+
+            s.spawn(move|| {
+                for y in 0..(height - 1) {
+                    for x in 0..(width- 1) {
+                        south_east[(height - y - 1) * width + (width - x - 1)] = south_east[(height - y - 2) * width + (width - x - 2)];
+                    }
+                }
+            });
+
+        });
 
         // Tidy up the edges
         let x = self.width - 1;

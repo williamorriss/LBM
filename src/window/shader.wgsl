@@ -15,7 +15,7 @@ struct VertexOutput {
 
 fn heatmap(speed: f32) -> vec3<f32> {
     if speed < 0.0 {
-        return  vec3<f32>(0.0,1.0,0.0);
+        return  vec3<f32>(0.0,0.0,0.0);
     }
     const START_COLOR: vec3<f32> = vec3<f32>(0.0, 0.0, 1.0); // Blue
     const END_COLOR: vec3<f32> = vec3<f32>(1.0, 0.0, 0.0);   // Red
@@ -36,7 +36,6 @@ fn heatmap(speed: f32) -> vec3<f32> {
 @vertex
 fn vs_main(model: VertexInput,) -> VertexOutput {
     var out: VertexOutput;
-    out.tex_coords = model.tex_coords;
     out.clip_position = vec4<f32>(model.position.xy + model.delta_position,model.position.z, 1.0);
     out.color = heatmap(model.speed);
     return out;
