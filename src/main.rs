@@ -11,10 +11,10 @@ use std::thread;
 use std::sync::{Arc,Mutex};
 
 const UX0: f32 = 0.2; // Initial speed
-const UY0: f32 = 0.0; // Initial speed
-const OMEGA: f32 = 1.3; // Relaxation parameter (function of viscosity)
+const UY0: f32 = -0.1; // Initial speed
+const OMEGA: f32 = 0.5; // Relaxation parameter (function of viscosity)
 
-pub fn cyllindircal_barrier(width: u32, height: u32, center: (usize,usize), radius: u32) -> BitVec {
+pub fn cyllindircal_barrier(width: usize, height: usize, center: (usize,usize), radius: u32) -> BitVec {
     let mut output = Vec::new();
     for y in 0..height {
         for x in 0..width {
@@ -39,8 +39,9 @@ fn read_img() -> (usize,usize,BitVec) {
 
 
 fn main() {
-    let (width,height,barriers) = read_img();
-    //let barriers = cyllindircal_barrier((400,450), 100);
+    //let (width,height,barriers) = read_img();
+    let (width,height): (usize,usize) = (1920,1080);
+    let barriers = cyllindircal_barrier(width,height,(400,450), 100);
     let initial_data = vec![SimulationData{speed: 0.0}; width*height];
     let output = Arc::new(Mutex::new(initial_data));
     let event_loop = EventLoop::new().unwrap();

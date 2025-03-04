@@ -1,5 +1,6 @@
 use crate::window::render::{D2,SimulationData};
 use bitvec::prelude::*;
+use rand::Rng;
 use std::sync::{Arc,Mutex};
 ///////////////////////////////////////
 ////// LB PARAMS AND CONSTANTS ////////
@@ -88,25 +89,27 @@ impl Lattice {
     }
 
     pub fn initialize(&mut self, ux0: f32, uy0: f32) {
-        // Useful pre-computed constants
-        let vx2 = ux0 * ux0;
-        let vy2 = uy0 * uy0;
-        let vxvy2 = 2.0 * ux0 * uy0;
-        let v2 = vx2 + vy2;
-        let v215 = 1.5 * v2;
-
-    
+        use rand;
+        let mut rand_thread = rand::rng();
         // Loop through the cells, initialize densities
-        for idx in 0..(self.height * self.width) {            
+        for idx in 0..(self.height * self.width) {   
+            let ux = ux0 + rand_thread.random_range(-0.1..0.1);
+            let uy = uy0 + rand_thread.random_range(-0.1..0.1);
+            let vx2 = ux * ux;
+            let vy2 = uy * uy;
+            let vxvy2 = 2.0 * ux * uy;
+            let v2 = vx2 + vy2;
+            let v215 = 1.5 * v2;         
+
             self.unit[idx] = FOUR_NINTHS  * (1.0 - v215);
-            self.east[idx] = ONE_NINTH * (1.0 + 3.0 * ux0 + 4.5 * vx2 - v215);
-            self.west[idx] = ONE_NINTH * (1.0 - 3.0 * ux0 + 4.5 * vx2 - v215);
-            self.north[idx] = ONE_NINTH * (1.0 + 3.0 * uy0 + 4.5 * vy2 - v215);
-            self.south[idx] = ONE_NINTH * (1.0 - 3.0 * uy0 + 4.5 * vy2 - v215);
-            self.north_east[idx] = ONE_THIRTYSIXTH * (1.0 + 3.0 * (ux0 + uy0) + 4.5 * (v2 + vxvy2) - v215);
-            self.north_west[idx] = ONE_THIRTYSIXTH *  (1.0 - 3.0 * ux0 + 3.0 * uy0 + 4.5 * (v2 - vxvy2) - v215);
-            self.south_east[idx] = ONE_THIRTYSIXTH * (1.0 + 3.0 * ux0 - 3.0 * uy0 + 4.5 * (v2 - vxvy2) - v215);
-            self.south_west[idx] = ONE_THIRTYSIXTH * (1.0 - 3.0 * (ux0 + uy0) + 4.5 * (v2 + vxvy2) - v215);
+            self.east[idx] = ONE_NINTH * (1.0 + 3.0 * ux + 4.5 * vx2 - v215);
+            self.west[idx] = ONE_NINTH * (1.0 - 3.0 * ux + 4.5 * vx2 - v215);
+            self.north[idx] = ONE_NINTH * (1.0 + 3.0 * uy + 4.5 * vy2 - v215);
+            self.south[idx] = ONE_NINTH * (1.0 - 3.0 * uy + 4.5 * vy2 - v215);
+            self.north_east[idx] = ONE_THIRTYSIXTH * (1.0 + 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215);
+            self.north_west[idx] = ONE_THIRTYSIXTH *  (1.0 - 3.0 * ux + 3.0 * uy + 4.5 * (v2 - vxvy2) - v215);
+            self.south_east[idx] = ONE_THIRTYSIXTH * (1.0 + 3.0 * ux - 3.0 * uy + 4.5 * (v2 - vxvy2) - v215);
+            self.south_west[idx] = ONE_THIRTYSIXTH * (1.0 - 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215);
 
         }
     }
