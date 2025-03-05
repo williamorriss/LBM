@@ -1,5 +1,7 @@
 use crate::window::render::{D2,SimulationData};
 use bitvec::prelude::*;
+use itertools::*;
+use rayon::prelude::*;
 use rand::Rng;
 use std::sync::{Arc,Mutex};
 ///////////////////////////////////////
@@ -23,6 +25,9 @@ pub struct Lattice {
     north_east : Vec<f32>,
     south_east : Vec<f32>,
     south_west : Vec<f32>,
+    density: Vec<f32>,
+    velx: Vec<f32>,
+    vely: Vec<f32>,
     // Barriers
     bar: BitVec, 
     speed: Vec<f32>,
@@ -48,6 +53,9 @@ impl Lattice {
             north_east: vec![0.0; length],
             south_east: vec![0.0; length],
             south_west: vec![0.0; length],
+            density: vec![0.0; length],
+            velx: vec![0.0; length],
+            vely: vec![0.0; length],
             // Barriers
             bar: barriers, 
             speed: vec![0.0; length],
@@ -128,6 +136,7 @@ impl Lattice {
         let south_east = &mut self.south_east;
         let south_west = &mut self.south_west;
         // Stream all internal cells
+
         std::thread::scope(|s| {
             s.spawn(move|| {
                 for y in 0..(height - 1) {
@@ -243,43 +252,148 @@ impl Lattice {
 
 
     fn collide(&mut self) {
+        let idx: Vec<usize> = iproduct!(0..self.width,0..self.height).map(|(x,y)|y * self.width + x).collect();
         // Do not touch cells on top, bottom, left, or right
-        for y in 1..(self.height - 1) {
-            for x in 1..(self.width - 1) {
-                let idx = y * self.width + x;
-                // Skip over cells containing barriers
-                if !self.bar[idx] {
-                    // Compute the macroscopic density
-                    let rho = self.unit[idx] + self.north[idx] + self.east[idx] + self.south[idx] + self.west[idx]
-                        + self.north_east[idx] + self.south_east[idx] + self.south_west[idx] + self.north_west[idx];
+        self.density = idx.clone()
+            .into_par_iter() // Iterate over the indices of elements
+            .map(|i| {
+                if self.bar[i] {return self.density[i];}
+                // Sum the ith element across all vectors
+                [&self.unit, &self.north, &self.east, &self.south, &self.west
+                ,&self.north_east,&self.south_east,&self.south_west, &self.north_west].into_iter().map(|vec| vec[i]).sum::<f32>()
+            })
+            .collect();
 
-                    // Compute the macroscopic velocities (vx and vy)
-                    let ux = (self.east[idx] + self.north_east[idx] + self.south_east[idx] - self.west[idx] - self.north_west[idx] - self.south_west[idx]) / rho;
-                    let uy = (self.north[idx] + self.north_east[idx] + self.north_west[idx] - self.south[idx] - self.south_east[idx] - self.south_west[idx]) / rho;
-                    // Compute squares of velocities and cross-term
-                    let vx2 = ux * ux;
-                    let vy2 = uy * uy;
-                    let vxvy2 = 2.0 * ux * uy;
-                    let v2 = vx2 + vy2;
-                    let v215 = 1.5 * v2;
+        self.velx = idx.clone()
+        .into_par_iter() // Iterate over the indices of elements
+        .map(|idx| {
+            if self.bar[idx] {return self.velx[idx];}
+            // Sum the ith element across all vectors
+            (self.east[idx] + self.north_east[idx] + self.south_east[idx] 
+            - (self.west[idx] + self.north_west[idx] + &self.south_west[idx]))/self.density[idx]
+        })
+        .collect();
 
-                    self.speed[idx] = vx2 + vy2;
-                    //println!("{:?}", self.speed[idx]);
+        self.vely = idx.clone()
+        .into_par_iter() // Iterate over the indices of elements
+        .map(|idx| {
+            if self.bar[idx] {return self.vely[idx];}
+            // Sum the ith element across all vectors
+            (self.north[idx] + self.north_east[idx] + self.north_west[idx] 
+            - (self.south[idx] + self.south_east[idx] + &self.south_west[idx]))/self.density[idx]
+        })
+        .collect();
 
-                    // Perform collision updates
-                    self.east[idx] += self.omega * (ONE_NINTH * rho * (1.0 + 3.0 * ux + 4.5 * vx2 - v215) - self.east[idx]);
-                    self.west[idx] += self.omega * (ONE_NINTH * rho * (1.0 - 3.0 * ux + 4.5 * vx2 - v215) - self.west[idx]);
-                    self.north[idx] += self.omega * (ONE_NINTH * rho * (1.0 + 3.0 * uy + 4.5 * vy2 - v215) - self.north[idx]);
-                    self.south[idx] += self.omega * (ONE_NINTH * rho * (1.0 - 3.0 * uy + 4.5 * vy2 - v215) - self.south[idx]);
-                    self.north_east[idx] += self.omega * (ONE_THIRTYSIXTH * rho * (1.0 + 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215) - self.north_east[idx]);
-                    self.north_west[idx] += self.omega * (ONE_THIRTYSIXTH * rho * (1.0 - 3.0 * ux + 3.0 * uy + 4.5 * (v2 - vxvy2) - v215) - self.north_west[idx]);
-                    self.south_east[idx] += self.omega * (ONE_THIRTYSIXTH * rho * (1.0 + 3.0 * ux - 3.0 * uy + 4.5 * (v2 - vxvy2) - v215) - self.south_east[idx]);
-                    self.south_west[idx] += self.omega * (ONE_THIRTYSIXTH * rho * (1.0 - 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215) - self.south_west[idx]);
+        self.east = izip!(&self.bar,&self.east,&self.velx,&self.vely,&self.density).map(|(bar,&cell,&ux,&uy,&rho)| {
+            if *bar {return cell;}
 
-                    // Conserve mass
-                    self.unit[idx] = rho - (self.east[idx] + self.west[idx] + self.north[idx] + self.south[idx] + self.north_east[idx] + self.south_east[idx] + self.north_west[idx] + self.south_west[idx]);
-                }
-            }
-        }
+            let vx2 = ux * ux;
+            let vy2 = uy * uy;
+            let v2 = vx2 + vy2;
+            let v215 = 1.5 * v2;
+
+            cell + self.omega * (ONE_NINTH * rho * (1.0 + 3.0 * ux + 4.5 * vx2 - v215) - cell)
+        }).collect();
+
+        self.west = izip!(&self.bar,&self.west,&self.velx,&self.vely,&self.density).map(|(bar,&cell,&ux,&uy,&rho)| {
+            if *bar {return cell;}
+
+            let vx2 = ux * ux;
+            let vy2 = uy * uy;
+            let v2 = vx2 + vy2;
+            let v215 = 1.5 * v2;
+
+            cell + self.omega * (ONE_NINTH * rho * (1.0 - 3.0 * ux + 4.5 * vx2 - v215) - cell)
+        }).collect();
+
+        
+
+        self.north = izip!(&self.bar,&self.north,&self.velx,&self.vely,&self.density).map(|(bar,&cell,&ux,&uy,&rho)| {
+            if *bar {return cell;}
+
+            let vx2 = ux * ux;
+            let vy2 = uy * uy;
+            let v2 = vx2 + vy2;
+            let v215 = 1.5 * v2;
+            
+
+            cell + self.omega * (ONE_NINTH * rho * (1.0 + 3.0 * uy + 4.5 * vy2 - v215) - cell)
+        }).collect();
+
+        self.south = izip!(&self.bar,&self.south,&self.velx,&self.vely,&self.density).map(|(bar,&cell,&ux,&uy,&rho)| {
+            if *bar {return cell;}
+
+            let vx2 = ux * ux;
+            let vy2 = uy * uy;
+            let v2 = vx2 + vy2;
+            let v215 = 1.5 * v2;
+
+            cell + self.omega * (ONE_NINTH * rho * (1.0 - 3.0 * uy + 4.5 * vy2 - v215) - cell)
+        }).collect();
+
+        self.north_east = izip!(&self.bar,&self.north_east,&self.velx,&self.vely,&self.density).map(|(bar,&cell,&ux,&uy,&rho)| {
+            if *bar {return cell;}
+
+            let vx2 = ux * ux;
+            let vy2 = uy * uy;
+            let v2 = vx2 + vy2;
+            let vxvy2 = 2.0 * ux * uy;
+            let v215 = 1.5 * v2;
+
+            cell + self.omega * (ONE_THIRTYSIXTH * rho * (1.0 + 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215) - cell)
+        }).collect();
+
+
+
+        self.south_east = izip!(&self.bar,&self.south_east,&self.velx,&self.vely,&self.density).map(|(bar,&cell,&ux,&uy,&rho)| {
+            if *bar {return cell;}
+
+            let vx2 = ux * ux;
+            let vy2 = uy * uy;
+            let v2 = vx2 + vy2;
+            let vxvy2 = 2.0 * ux * uy;
+            let v215 = 1.5 * v2;
+
+            cell + self.omega * (ONE_THIRTYSIXTH * rho * (1.0 + 3.0 * ux - 3.0 * uy + 4.5 * (v2 - vxvy2) - v215) - cell)
+        }).collect();
+
+        self.north_west = izip!(&self.bar,&self.north_west,&self.velx,&self.vely,&self.density).map(|(bar,&cell,&ux,&uy,&rho)| {
+            if *bar {return cell;}
+
+            let vx2 = ux * ux;
+            let vy2 = uy * uy;
+            let v2 = vx2 + vy2;
+            let vxvy2 = 2.0 * ux * uy;
+            let v215 = 1.5 * v2;
+
+            cell + self.omega * (ONE_THIRTYSIXTH * rho * (1.0 - 3.0 * ux + 3.0 * uy + 4.5 * (v2 - vxvy2) - v215) - cell)
+        }).collect();
+
+        self.south_west = izip!(&self.bar,&self.south_west,&self.velx,&self.vely,&self.density).map(|(bar,&cell,&ux,&uy,&rho)| {
+            if *bar {return cell;}
+
+            let vx2 = ux * ux;
+            let vy2 = uy * uy;
+            let v2 = vx2 + vy2;
+            let vxvy2 = 2.0 * ux * uy;
+            let v215 = 1.5 * v2;
+
+            cell + self.omega * (ONE_THIRTYSIXTH * rho * (1.0 - 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215) - cell)
+        }).collect();
+
+
+        
+        self.unit = (0..self.height * self.width)
+            .into_par_iter() // Iterate over the indices of elements
+            .map(|i| {
+                if self.bar[i] {return 0.0;}
+                // Sum the ith element across all vectors
+                self.density[i] - [&self.east, &self.west,&self.north,
+                    &self.south,&self.north_east,&self.south_east,
+                    &self.north_west,&self.south_west].into_iter().map(|vec| vec[i]).sum::<f32>()
+            })
+            .collect();
+
+        self.speed = self.velx.par_iter().zip(self.vely.par_iter()).map(|(ux,uy)| ux * ux + uy * uy).collect();
     }
 }

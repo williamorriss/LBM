@@ -16,6 +16,7 @@ panic = "abort"
 
 
 [dependencies]
+rayon = "*"
 plotters = "*"
 bitvec = "*"
 palette = "*"
