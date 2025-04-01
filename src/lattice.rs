@@ -1,7 +1,7 @@
-use crate::window::render::{D2,SimulationData};
+use crate::window::render::{SimulationData, D2};
 use bitvec::prelude::*;
 use rand::Rng;
-use std::sync::{Arc,Mutex};
+use std::sync::{Arc, Mutex};
 ///////////////////////////////////////
 ////// LB PARAMS AND CONSTANTS ////////
 ///////////////////////////////////////
@@ -14,17 +14,17 @@ const ONE_THIRTYSIXTH: f32 = 1.0 / 36.0; // 1/36
 ///////////////////////////////////////
 // Microscopic densities
 pub struct Lattice {
-    unit : Vec<f32>,
-    north : Vec<f32>,
-    south : Vec<f32>,
-    east : Vec<f32>,
-    west : Vec<f32>,
-    north_west : Vec<f32>,
-    north_east : Vec<f32>,
-    south_east : Vec<f32>,
-    south_west : Vec<f32>,
+    unit: Vec<f32>,
+    north: Vec<f32>,
+    south: Vec<f32>,
+    east: Vec<f32>,
+    west: Vec<f32>,
+    north_west: Vec<f32>,
+    north_east: Vec<f32>,
+    south_east: Vec<f32>,
+    south_west: Vec<f32>,
     // Barriers
-    bar: BitVec, 
+    bar: BitVec,
     speed: Vec<f32>,
     dimensions: D2,
     timestep: u32,
@@ -36,7 +36,13 @@ pub struct Lattice {
 }
 
 impl Lattice {
-    pub fn new(width: usize, height: usize, omega: f32, barriers: BitVec, output: Arc<Mutex<Vec<SimulationData>>>) -> Lattice {
+    pub fn new(
+        width: usize,
+        height: usize,
+        omega: f32,
+        barriers: BitVec,
+        output: Arc<Mutex<Vec<SimulationData>>>,
+    ) -> Lattice {
         let length = width * height;
         Lattice {
             unit: vec![0.0; length],
@@ -49,12 +55,17 @@ impl Lattice {
             south_east: vec![0.0; length],
             south_west: vec![0.0; length],
             // Barriers
-            bar: barriers, 
+            bar: barriers,
             speed: vec![0.0; length],
-            dimensions: D2 {x: width, y: height},
+            dimensions: D2 {
+                x: width,
+                y: height,
+            },
             timestep: 0,
             time: 0,
-            width, height, omega, 
+            width,
+            height,
+            omega,
             output,
         }
     }
@@ -65,12 +76,22 @@ impl Lattice {
 
     pub fn speed_show(&self) {
         let mut output = self.output.lock().unwrap();
-        let vortex: Vec<SimulationData> = self.speed.iter().enumerate()
-            .map(|(index,&speed)| if !self.bar[index] {SimulationData{speed}} else {SimulationData{speed: -10.0}}).collect();
+        let vortex: Vec<SimulationData> = self
+            .speed
+            .iter()
+            .enumerate()
+            .map(|(index, &speed)| {
+                if !self.bar[index] {
+                    SimulationData { speed }
+                } else {
+                    SimulationData { speed: -10.0 }
+                }
+            })
+            .collect();
         output.copy_from_slice(&vortex);
     }
 
-    pub fn simulate(&mut self){
+    pub fn simulate(&mut self) {
         self.timestep += 1;
         use std::time::Instant;
         let start = Instant::now();
@@ -79,12 +100,16 @@ impl Lattice {
         self.bounce();
         self.collide();
         self.speed_show();
-    
+
         // Measure and print elapsed time
         let elapsed = start.elapsed();
         self.time += elapsed.as_millis() as u32;
         if self.timestep % 500 == 0 {
-            print!("T = {:?} millis :: AVG = {:?}\n", elapsed.as_millis(), self.time/ self.timestep);
+            print!(
+                "T = {:?} millis :: AVG = {:?}\n",
+                elapsed.as_millis(),
+                self.time / self.timestep
+            );
         }
     }
 
@@ -92,155 +117,124 @@ impl Lattice {
         use rand;
         let mut rand_thread = rand::rng();
         // Loop through the cells, initialize densities
-        for idx in 0..(self.height * self.width) {   
+        for idx in 0..(self.height * self.width) {
             let ux = ux0 + rand_thread.random_range(-0.1..0.1);
             let uy = uy0 + rand_thread.random_range(-0.1..0.1);
             let vx2 = ux * ux;
             let vy2 = uy * uy;
             let vxvy2 = 2.0 * ux * uy;
             let v2 = vx2 + vy2;
-            let v215 = 1.5 * v2;         
+            let v215 = 1.5 * v2;
 
-            self.unit[idx] = FOUR_NINTHS  * (1.0 - v215);
+            self.unit[idx] = FOUR_NINTHS * (1.0 - v215);
             self.east[idx] = ONE_NINTH * (1.0 + 3.0 * ux + 4.5 * vx2 - v215);
             self.west[idx] = ONE_NINTH * (1.0 - 3.0 * ux + 4.5 * vx2 - v215);
             self.north[idx] = ONE_NINTH * (1.0 + 3.0 * uy + 4.5 * vy2 - v215);
             self.south[idx] = ONE_NINTH * (1.0 - 3.0 * uy + 4.5 * vy2 - v215);
-            self.north_east[idx] = ONE_THIRTYSIXTH * (1.0 + 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215);
-            self.north_west[idx] = ONE_THIRTYSIXTH *  (1.0 - 3.0 * ux + 3.0 * uy + 4.5 * (v2 - vxvy2) - v215);
-            self.south_east[idx] = ONE_THIRTYSIXTH * (1.0 + 3.0 * ux - 3.0 * uy + 4.5 * (v2 - vxvy2) - v215);
-            self.south_west[idx] = ONE_THIRTYSIXTH * (1.0 - 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215);
-
+            self.north_east[idx] =
+                ONE_THIRTYSIXTH * (1.0 + 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215);
+            self.north_west[idx] =
+                ONE_THIRTYSIXTH * (1.0 - 3.0 * ux + 3.0 * uy + 4.5 * (v2 - vxvy2) - v215);
+            self.south_east[idx] =
+                ONE_THIRTYSIXTH * (1.0 + 3.0 * ux - 3.0 * uy + 4.5 * (v2 - vxvy2) - v215);
+            self.south_west[idx] =
+                ONE_THIRTYSIXTH * (1.0 - 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215);
         }
     }
-
 
     fn stream(&mut self) {
-        let height = self.height;
         let width = self.width;
+        let height = self.height;
 
-        let north = &mut self.north;
-        let south = &mut self.south;
-        let east = &mut self.east;
-        let west = &mut self.west;
-        let north_west = &mut self.north_west;
-        let north_east = &mut self.north_east;
-        let south_east = &mut self.south_east;
-        let south_west = &mut self.south_west;
-        // Stream all internal cells
-        std::thread::scope(|s| {
-            s.spawn(move|| {
-                for y in 0..(height - 1) {
-                    for x in 0..(width- 1) {
+        // Process each directional component in parallel
+        rayon::scope(|s| {
+            // North component
+            s.spawn(|_| {
+                (0..height - 1).into_par_iter().for_each(|y| {
+                    for x in 0..width - 1 {
                         let idx = y * width + x;
-                        north[idx] = north[idx + width];
+                        self.north[idx] = self.north[idx + width];
                     }
-                }
+                });
             });
 
-            s.spawn(move|| {
-                for y in 0..(height - 1) {
-                    for x in 0..(width- 1) {
+            // Northwest component
+            s.spawn(|_| {
+                (0..height - 1).into_par_iter().for_each(|y| {
+                    for x in 0..width - 1 {
                         let idx = y * width + x;
-                        north_west[idx] = north_west[idx + width + 1];
+                        self.north_west[idx] = self.north_west[idx + width + 1];
                     }
-                }
+                });
             });
 
-            s.spawn(move|| {
-                for y in 0..(height - 1) {
-                    for x in 0..(width- 1) {
+            // West component
+            s.spawn(|_| {
+                (0..height - 1).into_par_iter().for_each(|y| {
+                    for x in 0..width - 1 {
                         let idx = y * width + x;
-                        west[idx] = west[idx + 1];
+                        self.west[idx] = self.west[idx + 1];
                     }
-                }
+                });
             });
 
-            s.spawn(move|| {
-                for y in 0..(height - 1) {
-                    for x in 0..(width- 1) {
-                        south[(height - y - 1) * width + x] = south[(height - y - 2) * width + x];
+            // South components
+            s.spawn(|_| {
+                (0..height - 1).into_par_iter().for_each(|y| {
+                    for x in 0..width - 1 {
+                        let rev_y = height - y - 1;
+                        self.south[rev_y * width + x] = self.south[(rev_y - 1) * width + x];
                     }
-                }
+                });
             });
 
-            s.spawn(move|| {
-                for y in 0..(height - 1) {
-                    for x in 0..(width- 1) {
-                        south_west[(height - y - 1) * width + x] = south_west[(height - y - 2) * width + x + 1];
-                    }
-                }
+            // Edge handling in parallel
+            s.spawn(|_| {
+                let x = width - 1;
+                (1..height - 1).into_par_iter().for_each(|y| {
+                    self.north[y * width + x] = self.north[y * width + x + width];
+                    self.south[(height - y - 1) * width + x] =
+                        self.south[(height - y - 2) * width + x];
+                });
             });
-
-            s.spawn(move|| {
-                for y in 0..(height - 1) {
-                    for x in 0..(width- 1) {
-                        east[y * width + (width - x - 1)] = east[y * width + (width - x - 2)];
-                    }
-                }
-            });
-
-            s.spawn(move|| {
-                for y in 0..(height - 1) {
-                    for x in 0..(width- 1) {
-                        north_east[y * width + (width - x - 1)] = north_east[y * width + width + (width - x - 2)];
-                    }
-                }
-            });
-
-            s.spawn(move|| {
-                for y in 0..(height - 1) {
-                    for x in 0..(width- 1) {
-                        south_east[(height - y - 1) * width + (width - x - 1)] = south_east[(height - y - 2) * width + (width - x - 2)];
-                    }
-                }
-            });
-
         });
-
-        // Tidy up the edges
-        let x = self.width - 1;
-        for y in 1..(self.height - 1) {
-            // Movement north on right boundary
-            self.north[y * self.width + x] = self.north[y * self.width + x + self.width];
-            // Movement south on right boundary
-            self.south[(self.height - y - 1) * self.width + x] = self.south[(self.height - y - 2) * self.width + x];
-        }
     }
-
 
     fn bounce(&mut self) {
         // Loop through all interior cells
-        for y in 2..(self.height - 2) {
-            for x in 2..(self.width - 2) {
-                let idx = y * self.width + x;
-                // If the cell contains a boundary
-                if self.bar[idx] {
-                    // Push densities back from whence they came, then clear the cell
-                    self.north[idx - self.width] = self.south[idx];
+        let width = self.width;
+        let bar = &self.bar;
+
+        (2..self.height - 2).into_par_iter().for_each(|y| {
+            for x in 2..self.width - 2 {
+                let idx = y * width + x;
+                if bar[idx] {
+                    // Swap directions with adjacent cells
+                    self.north[idx - width] = self.south[idx];
                     self.south[idx] = 0.0;
-                    self.south[idx + self.width] = self.north[idx];
+                    self.south[idx + width] = self.north[idx];
                     self.north[idx] = 0.0;
+
                     self.east[idx + 1] = self.west[idx];
                     self.west[idx] = 0.0;
                     self.west[idx - 1] = self.east[idx];
                     self.east[idx] = 0.0;
-                    self.north_east[idx - self.width + 1] = self.south_west[idx];
+
+                    self.north_east[idx - width + 1] = self.south_west[idx];
                     self.south_west[idx] = 0.0;
-                    self.north_west[idx - self.width - 1] = self.south_east[idx];
+                    self.north_west[idx - width - 1] = self.south_east[idx];
                     self.south_east[idx] = 0.0;
-                    self.south_east[idx + self.width + 1] = self.north_west[idx];
+
+                    self.south_east[idx + width + 1] = self.north_west[idx];
                     self.north_west[idx] = 0.0;
-                    self.south_west[idx + self.width - 1] = self.north_east[idx];
+                    self.south_west[idx + width - 1] = self.north_east[idx];
                     self.north_east[idx] = 0.0;
 
-                    // Clear zero density
                     self.unit[idx] = 0.0;
                 }
             }
-        }
+        });
     }
-
 
     fn collide(&mut self) {
         // Do not touch cells on top, bottom, left, or right
@@ -250,12 +244,27 @@ impl Lattice {
                 // Skip over cells containing barriers
                 if !self.bar[idx] {
                     // Compute the macroscopic density
-                    let rho = self.unit[idx] + self.north[idx] + self.east[idx] + self.south[idx] + self.west[idx]
-                        + self.north_east[idx] + self.south_east[idx] + self.south_west[idx] + self.north_west[idx];
+                    let rho = self.unit[idx]
+                        + self.north[idx]
+                        + self.east[idx]
+                        + self.south[idx]
+                        + self.west[idx]
+                        + self.north_east[idx]
+                        + self.south_east[idx]
+                        + self.south_west[idx]
+                        + self.north_west[idx];
 
                     // Compute the macroscopic velocities (vx and vy)
-                    let ux = (self.east[idx] + self.north_east[idx] + self.south_east[idx] - self.west[idx] - self.north_west[idx] - self.south_west[idx]) / rho;
-                    let uy = (self.north[idx] + self.north_east[idx] + self.north_west[idx] - self.south[idx] - self.south_east[idx] - self.south_west[idx]) / rho;
+                    let ux = (self.east[idx] + self.north_east[idx] + self.south_east[idx]
+                        - self.west[idx]
+                        - self.north_west[idx]
+                        - self.south_west[idx])
+                        / rho;
+                    let uy = (self.north[idx] + self.north_east[idx] + self.north_west[idx]
+                        - self.south[idx]
+                        - self.south_east[idx]
+                        - self.south_west[idx])
+                        / rho;
                     // Compute squares of velocities and cross-term
                     let vx2 = ux * ux;
                     let vy2 = uy * uy;
@@ -267,17 +276,45 @@ impl Lattice {
                     //println!("{:?}", self.speed[idx]);
 
                     // Perform collision updates
-                    self.east[idx] += self.omega * (ONE_NINTH * rho * (1.0 + 3.0 * ux + 4.5 * vx2 - v215) - self.east[idx]);
-                    self.west[idx] += self.omega * (ONE_NINTH * rho * (1.0 - 3.0 * ux + 4.5 * vx2 - v215) - self.west[idx]);
-                    self.north[idx] += self.omega * (ONE_NINTH * rho * (1.0 + 3.0 * uy + 4.5 * vy2 - v215) - self.north[idx]);
-                    self.south[idx] += self.omega * (ONE_NINTH * rho * (1.0 - 3.0 * uy + 4.5 * vy2 - v215) - self.south[idx]);
-                    self.north_east[idx] += self.omega * (ONE_THIRTYSIXTH * rho * (1.0 + 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215) - self.north_east[idx]);
-                    self.north_west[idx] += self.omega * (ONE_THIRTYSIXTH * rho * (1.0 - 3.0 * ux + 3.0 * uy + 4.5 * (v2 - vxvy2) - v215) - self.north_west[idx]);
-                    self.south_east[idx] += self.omega * (ONE_THIRTYSIXTH * rho * (1.0 + 3.0 * ux - 3.0 * uy + 4.5 * (v2 - vxvy2) - v215) - self.south_east[idx]);
-                    self.south_west[idx] += self.omega * (ONE_THIRTYSIXTH * rho * (1.0 - 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215) - self.south_west[idx]);
+                    self.east[idx] += self.omega
+                        * (ONE_NINTH * rho * (1.0 + 3.0 * ux + 4.5 * vx2 - v215) - self.east[idx]);
+                    self.west[idx] += self.omega
+                        * (ONE_NINTH * rho * (1.0 - 3.0 * ux + 4.5 * vx2 - v215) - self.west[idx]);
+                    self.north[idx] += self.omega
+                        * (ONE_NINTH * rho * (1.0 + 3.0 * uy + 4.5 * vy2 - v215) - self.north[idx]);
+                    self.south[idx] += self.omega
+                        * (ONE_NINTH * rho * (1.0 - 3.0 * uy + 4.5 * vy2 - v215) - self.south[idx]);
+                    self.north_east[idx] += self.omega
+                        * (ONE_THIRTYSIXTH
+                            * rho
+                            * (1.0 + 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215)
+                            - self.north_east[idx]);
+                    self.north_west[idx] += self.omega
+                        * (ONE_THIRTYSIXTH
+                            * rho
+                            * (1.0 - 3.0 * ux + 3.0 * uy + 4.5 * (v2 - vxvy2) - v215)
+                            - self.north_west[idx]);
+                    self.south_east[idx] += self.omega
+                        * (ONE_THIRTYSIXTH
+                            * rho
+                            * (1.0 + 3.0 * ux - 3.0 * uy + 4.5 * (v2 - vxvy2) - v215)
+                            - self.south_east[idx]);
+                    self.south_west[idx] += self.omega
+                        * (ONE_THIRTYSIXTH
+                            * rho
+                            * (1.0 - 3.0 * (ux + uy) + 4.5 * (v2 + vxvy2) - v215)
+                            - self.south_west[idx]);
 
                     // Conserve mass
-                    self.unit[idx] = rho - (self.east[idx] + self.west[idx] + self.north[idx] + self.south[idx] + self.north_east[idx] + self.south_east[idx] + self.north_west[idx] + self.south_west[idx]);
+                    self.unit[idx] = rho
+                        - (self.east[idx]
+                            + self.west[idx]
+                            + self.north[idx]
+                            + self.south[idx]
+                            + self.north_east[idx]
+                            + self.south_east[idx]
+                            + self.north_west[idx]
+                            + self.south_west[idx]);
                 }
             }
         }
