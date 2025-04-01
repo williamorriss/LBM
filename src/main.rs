@@ -52,7 +52,8 @@ fn main() {
     println!("Arguments: {:?}", &args[1..]); // Rest are user-provided args
     let scale_factor: usize = args[1].parse().unwrap();
     let (width, height): (usize, usize) = (16 * scale_factor, 9 * scale_factor);
-    let barriers = cyllindircal_barrier(width, height, (400, 450), 100);
+    let barriers =
+        cyllindircal_barrier(width, height, (width / 4, height / 2), (height / 4) as u32);
     let initial_data = vec![SimulationData { speed: 0.0 }; width * height];
     let output = Arc::new(Mutex::new(initial_data));
     let event_loop = EventLoop::new().unwrap();

@@ -12,7 +12,8 @@
                 "args": [
                     "build",
                     "--bin=lbm",
-                    "--package=lbm"
+                    "--package=lbm",
+                    "-- 10"
                 ],
                 "filter": {
                     "name": "lbm",
