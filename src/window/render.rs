@@ -1,4 +1,5 @@
 use std::iter;
+use std::process;
 use wgpu::util::DeviceExt;
 use winit::{
     event::*,
@@ -6,7 +7,7 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
     window::Window,
 };
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct D2 {
     pub x: usize,
     pub y: usize,
@@ -14,8 +15,8 @@ pub struct D2 {
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct LatticeCell {
-    pub position: [f32;2],
-    pub color: [f32;3],
+    pub position: [f32; 2],
+    pub color: [f32; 3],
 }
 
 use std::sync::{Arc, Mutex};
@@ -69,7 +70,6 @@ impl SimulationData {
             ],
         }
     }
-
 }
 
 #[repr(C)]
@@ -80,7 +80,7 @@ pub struct Vertex {
 }
 
 impl Vertex {
-    const INDICES: [u16;6] = [0,3,1,0,2,3];
+    const INDICES: [u16; 6] = [0, 3, 1, 0, 2, 3];
     const ATTRIBS: [wgpu::VertexAttribute; 2] =
         wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2];
 
@@ -94,7 +94,6 @@ impl Vertex {
         }
     }
 }
-
 
 #[allow(dead_code)]
 pub struct State<'a> {
@@ -115,45 +114,51 @@ pub struct State<'a> {
 }
 
 fn make_vertices(dimensions: D2) -> Vec<Vertex> {
-    let (height,width) = (dimensions.y, dimensions.x);
-    let x_res = 2.0/width as f32;
-    let y_res = 2.0/height as f32;
-    
+    let (height, width) = (dimensions.y, dimensions.x);
+    let x_res = 2.0 / width as f32;
+    let y_res = 2.0 / height as f32;
+
     vec![
         Vertex {
-            position: [-1.0,1.0, 0.0],
-            tex_coords: [0.0,0.0],
+            position: [-1.0, 1.0, 0.0],
+            tex_coords: [0.0, 0.0],
         },
         Vertex {
             position: [-1.0 + x_res, 1.0, 0.0],
-            tex_coords: [1.0,0.0],
+            tex_coords: [1.0, 0.0],
         },
         Vertex {
-            position: [-1.0, 1.0 - y_res,0.0],
-            tex_coords: [0.0,1.0],
+            position: [-1.0, 1.0 - y_res, 0.0],
+            tex_coords: [0.0, 1.0],
         },
         Vertex {
-            position:[-1.0 + x_res, 1.0 - y_res,0.0],
-            tex_coords: [1.0,1.0],
-        }
-        ]
+            position: [-1.0 + x_res, 1.0 - y_res, 0.0],
+            tex_coords: [1.0, 1.0],
+        },
+    ]
 }
 fn make_cells(dim: D2) -> Vec<LatticeCell> {
     use itertools::*;
-    let x_res = 2.0/dim.x as f32;
-    let y_res = 2.0/dim.y as f32;
-    let color = [0.0;3];
-    
-    (0..dim.y).into_iter()
-    .cartesian_product((0..dim.x).into_iter())
-    .map(|(y,x)| LatticeCell {position: [x as f32 * x_res, -(y as f32 * y_res)], color})
-    .collect()
-    
+    let x_res = 2.0 / dim.x as f32;
+    let y_res = 2.0 / dim.y as f32;
+    let color = [0.0; 3];
+
+    (0..dim.y)
+        .into_iter()
+        .cartesian_product((0..dim.x).into_iter())
+        .map(|(y, x)| LatticeCell {
+            position: [x as f32 * x_res, -(y as f32 * y_res)],
+            color,
+        })
+        .collect()
 }
 
-
 impl<'a> State<'a> {
-    pub async fn new(window: &'a Window, simulation_data: Arc<Mutex<Vec<SimulationData>>>, dimensions: D2) -> State<'a>     {
+    pub async fn new(
+        window: &'a Window,
+        simulation_data: Arc<Mutex<Vec<SimulationData>>>,
+        dimensions: D2,
+    ) -> State<'a> {
         let size = window.inner_size();
 
         let vertices = make_vertices(dimensions);
@@ -206,22 +211,18 @@ impl<'a> State<'a> {
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
         };
-    
-        let cell_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("LatticeCell Buffer"),
-                contents: bytemuck::cast_slice(&cells),
-                usage: wgpu::BufferUsages::VERTEX,
-            }
-        );
 
-        let simulation_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Simlation Buffer"),
-                contents: bytemuck::cast_slice(&vec![0.0;dimensions.x * dimensions.y]),
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            }
-        );
+        let cell_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("LatticeCell Buffer"),
+            contents: bytemuck::cast_slice(&cells),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        let simulation_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Simlation Buffer"),
+            contents: bytemuck::cast_slice(&vec![0.0; dimensions.x * dimensions.y]),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        });
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
@@ -336,10 +337,13 @@ impl<'a> State<'a> {
                 label: Some("Simulation Encoder"),
             });
         let vortex = self.simulation_data.lock().unwrap();
-        self.queue.write_buffer(&self.simulation_buffer,0, bytemuck::cast_slice(&vortex.as_slice()));
+        self.queue.write_buffer(
+            &self.simulation_buffer,
+            0,
+            bytemuck::cast_slice(&vortex.as_slice()),
+        );
         self.queue.submit(std::iter::once(encoder.finish()));
     }
-
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
@@ -375,7 +379,7 @@ impl<'a> State<'a> {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            
+
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_vertex_buffer(1, self.cell_buffer.slice(..));
             render_pass.set_vertex_buffer(2, self.simulation_buffer.slice(..));
@@ -391,7 +395,6 @@ impl<'a> State<'a> {
         Ok(())
     }
 }
-
 
 pub async fn run<'a>(state: &mut State<'a>, event_loop: EventLoop<()>) {
     env_logger::init();
@@ -434,21 +437,19 @@ pub async fn run<'a>(state: &mut State<'a>, event_loop: EventLoop<()>) {
                                 }
                                 match state.render() {
                                     Ok(_) => {}
-                                    // Reconfigure the surface if it's lost or outdated
                                     Err(
                                         wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
                                     ) => state.resize(state.size),
-                                    // The system is out of memory, we should probably quit
                                     Err(wgpu::SurfaceError::OutOfMemory) => {
                                         log::error!("OutOfMemory");
                                         control_flow.exit();
                                     }
 
-                                    // This happens when the a frame takes too long to present
+                                    // When a frame takes too long to present
                                     Err(wgpu::SurfaceError::Timeout) => {
                                         log::warn!("Surface timeout")
                                     }
-                                    _=> (),
+                                    _ => (),
                                 }
                             }
                             _ => {}
@@ -459,4 +460,6 @@ pub async fn run<'a>(state: &mut State<'a>, event_loop: EventLoop<()>) {
             }
         })
         .unwrap();
+
+    process::exit(0);
 }
